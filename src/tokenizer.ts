@@ -111,8 +111,36 @@ class MinHeap {
 // 输入：预切分好的单个子词片 (例如 " hello" 或 "world")
 // 输出：BPE 合并后的子单元字符串数组
 // 预期行为：使用双向指针链表与二叉最小堆优先队列实现高吞吐量的 BPE 合并循环
+function _expandWithByteFallback(text: string): string[] {
+  const encoder = new TextEncoder();
+  const result: string[] = [];
+  for (const char of text) {
+    if (GEMMA_VOCAB[char] !== undefined) {
+      result.push(char);
+    } else {
+      const bytes = encoder.encode(char);
+      const byteTokens: string[] = [];
+      let allExist = true;
+      for (const b of bytes) {
+        const token = `<0x${b.toString(16).toUpperCase().padStart(2, "0")}>`;
+        if (GEMMA_VOCAB[token] === undefined) {
+          allExist = false;
+          break;
+        }
+        byteTokens.push(token);
+      }
+      if (allExist) {
+        result.push(...byteTokens);
+      } else {
+        result.push(char);
+      }
+    }
+  }
+  return result;
+}
+
 function _mergeWord(word: string): string[] {
-  const chars = Array.from(word);
+  const chars = _expandWithByteFallback(word);
   if (chars.length <= 1) return chars;
 
   // 1初始化双向指针链表数组
@@ -195,24 +223,27 @@ export const Tokenizer = {
   encode(text: string): TokenId[] {
     if (!text) return [];
 
-    // 1. Normalization: 替换普通空格为特殊的 Metaspace 字符 \u2581 (下 1/4 方块 ▁)
+    // 1. Normalization: 替换普通空格为 Metaspace 字符 ▁ (\u2581)
     const normalized = text.replace(/ /g, "\u2581");
 
-    // 2. Pre-tokenization: 按 Metaspace 占位符切分，且空格粘连在后驱词片的前部
-    const words = normalized.match(/\u2581?[^\u2581]+/g) || [];
+    // 2. 整个字符串作为一个词片执行 BPE 合并（官方 pipeline：normalize 后再 pre-tokenize，
+    //    此时已无空格可 split，整个文本作为单个 pre-token 送入 BPE 模型）
+    const mergedParts = _mergeWord(normalized);
 
     const tokens: TokenId[] = [];
+    let lastWasUnk = false;
 
-    // 3. 遍历预切分出的每个词片，执行 BPE 融合并查词表
-    for (const word of words) {
-      if (!word) continue;
-
-      const mergedParts = _mergeWord(word);
-
-      // 4. 将融合后的子字串转换为词表 ID，缺失的使用 unkId 填充
-      for (const part of mergedParts) {
-        const id = GEMMA_VOCAB[part];
-        tokens.push(id !== undefined ? id : GEMMA_UNK_ID);
+    // 3. 将融合后的子字串转换为词表 ID，缺失的使用 unkId 填充，连续 unk 仅保留首个（fuse_unk）
+    for (const part of mergedParts) {
+      const id = GEMMA_VOCAB[part];
+      if (id === undefined) {
+        if (!lastWasUnk) {
+          tokens.push(GEMMA_UNK_ID);
+        }
+        lastWasUnk = true;
+      } else {
+        tokens.push(id);
+        lastWasUnk = false;
       }
     }
 
