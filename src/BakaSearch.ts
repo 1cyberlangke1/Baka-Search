@@ -2,13 +2,10 @@ import type { DocId, BakaSearchOptions, SearchOptions, SearchResult } from "./ty
 import { InvertedIndex } from "./indexer.js";
 import { Tokenizer } from "./tokenizer.js";
 import { search } from "./bm25.js";
-import { GEMMA_VOCAB, GEMMA_MERGES } from "./gemma_vocab.js";
 
 export class BakaSearch {
   // 内部维护的倒排索引实例
   private _index = new InvertedIndex();
-  // 内部 BPE 分词器实例
-  private _tokenizer: Tokenizer;
   // 要被分词索引的字段白名单，若未指定则自动检测
   private _fields: string[] | undefined;
   // BM25 打分的相关参数 (k1, b, d)
@@ -23,12 +20,8 @@ export class BakaSearch {
 
   // 输入：可选配置 options，可以指定索引字段 fields 和 BM25 参数
   // 输出：BakaSearch 实例
-  // 预期行为：实例化 Tokenizer，保存相关参数
+  // 预期行为：保存相关参数，Tokenizer 采用全局静态调用，无需在此实例化
   constructor(options?: BakaSearchOptions) {
-    this._tokenizer = new Tokenizer({
-      vocab: GEMMA_VOCAB,
-      merges: GEMMA_MERGES,
-    });
     this._fields = options?.fields;
     this._bm25Params = {
       k1: options?.bm25?.k1 ?? 1.2,
@@ -65,7 +58,7 @@ export class BakaSearch {
       const value = doc[field];
       if (typeof value === "string") {
         fieldsData[field] = value;
-        const fieldTokens = this._tokenizer.encode(value);
+        const fieldTokens = Tokenizer.encode(value);
         tokens.push(...fieldTokens);
       }
     }
@@ -98,7 +91,7 @@ export class BakaSearch {
   // 输出：SearchResult 数组
   // 预期行为：将 query 分词，调用 bm25.search 完成排序，把结果 ID 转换回外部 ID，混入原始字段并返回
   search(query: string, options?: SearchOptions): SearchResult[] {
-    const queryTokens = this._tokenizer.encode(query);
+    const queryTokens = Tokenizer.encode(query);
     const searchOptions = {
       topK: options?.topK ?? 10,
     };
