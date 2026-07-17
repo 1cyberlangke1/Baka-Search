@@ -196,16 +196,10 @@ export const Tokenizer = {
     if (!text) return [];
 
     // 1. Normalization: 替换普通空格为特殊的 Metaspace 字符 \u2581 (下 1/4 方块 ▁)
-    let normalized = text.replace(/ /g, "\u2581");
-    // Gemma 分词器规范：如果不是以空格开头，要在最前部补上一个 \u2581
-    if (!normalized.startsWith("\u2581")) {
-      normalized = "\u2581" + normalized;
-    }
+    const normalized = text.replace(/ /g, "\u2581");
 
-    // 2. Pre-tokenization: 利用 Unicode 属性正则切分单词和标点，防止标点和单词黏连合并
-    // 匹配可选 \u2581 开头的单词/数字，或者匹配单个标点/符号/空白
-    const words =
-      normalized.match(/\u2581?[^\s\u2581\p{P}\p{S}\p{Z}\p{C}]+|\p{P}|\p{S}|\s+/gu) || [];
+    // 2. Pre-tokenization: 按 Metaspace 占位符切分，且空格粘连在后驱词片的前部
+    const words = normalized.match(/\u2581?[^\u2581]+/g) || [];
 
     const tokens: TokenId[] = [];
 
