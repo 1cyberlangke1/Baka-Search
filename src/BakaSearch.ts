@@ -11,8 +11,8 @@ export class BakaSearch {
   private _tokenizer: Tokenizer;
   // 要被分词索引的字段白名单，若未指定则自动检测
   private _fields: string[] | undefined;
-  // BM25 打分的相关参数 (k1, b)
-  private _bm25Params: { k1: number; b: number };
+  // BM25 打分的相关参数 (k1, b, d)
+  private _bm25Params: { k1: number; b: number; d: number };
 
   // 自增内部 ID 生成器
   private _nextInternalId = 1;
@@ -31,8 +31,9 @@ export class BakaSearch {
     });
     this._fields = options?.fields;
     this._bm25Params = {
-      k1: options?.bm25?.k1 ?? 1.5,
-      b: options?.bm25?.b ?? 0.75,
+      k1: options?.bm25?.k1 ?? 1.2,
+      b: options?.bm25?.b ?? 0.7,
+      d: options?.bm25?.d ?? 0.5,
     };
   }
 
