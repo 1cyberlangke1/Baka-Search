@@ -107,6 +107,7 @@ class MinHeap {
   }
 }
 
+// 参考 huggingface tokenizer 的 BPE 实现
 // 输入：预切分好的单个子词片 (例如 " hello" 或 "world")
 // 输出：BPE 合并后的子单元字符串数组
 // 预期行为：使用双向指针链表与二叉最小堆优先队列实现高吞吐量的 BPE 合并循环
@@ -114,7 +115,7 @@ function _mergeWord(word: string): string[] {
   const chars = Array.from(word);
   if (chars.length <= 1) return chars;
 
-  // 1. 初始化双向指针链表数组
+  // 1初始化双向指针链表数组
   const symbols: SymbolNode[] = [];
   for (let i = 0; i < chars.length; i++) {
     const char = chars[i];
@@ -127,7 +128,7 @@ function _mergeWord(word: string): string[] {
     });
   }
 
-  // 2. 扫描并把所有初始相邻字符对的合并任务推入最小堆
+  // 扫描并把所有初始相邻字符对的合并任务推入最小堆
   const queue = new MinHeap();
   for (let i = 0; i < symbols.length - 1; i++) {
     const leftNode = symbols[i];
@@ -140,53 +141,50 @@ function _mergeWord(word: string): string[] {
     }
   }
 
-  // ==========================================
-  // 主人请在这里实现你最拿手的 BPE 优先队列合并核心循环
-  // ==========================================
-  //
-  // 【合并算法步骤提示】：
-  //
-  // 1. 开启循环：`while (queue.length > 0)`。
-  //    弹出一个合并事件：`const top = queue.pop()!;`。
-  //
-  // 2. 惰性失效检查：
-  //    如果左侧节点已经被合并删除了（`symbols[top.pos].len === 0`），
-  //    或者左侧节点已经没有后继节点（`symbols[top.pos].next === -1`），
-  //    这说明它已经失效了，直接 `continue` 跳过。
-  //
-  // 3. 校验 Pair 依然是最新待合并的：
-  //    取出右侧节点：`const nextPos = symbols[top.pos].next; const right = symbols[nextPos];`。
-  //    将左、右节点的 c 拼接为 PairKey：`${symbols[top.pos].c},${right.c}`，并查 _mergeRanks。
-  //    如果查出来的 rank 与 top.rank 不一致，说明这个 MergeJob 是过期的事件，直接 `continue`。
-  //
-  // 4. 执行合并操作：
-  //    将右侧节点的 c 拼接到左侧：`symbols[top.pos].c += right.c;`。
-  //    更新左侧节点的长度和 next 指针：
-  //    `symbols[top.pos].len += right.len;`
-  //    `symbols[top.pos].next = right.next;`
-  //
-  // 5. 标记右侧节点为已合并状态：
-  //    `right.len = 0;`
-  //
-  // 6. 更新链表后驱的前指指针：
-  //    如果合并后，新的后驱节点存在（`right.next > -1`），
-  //    则更新该后驱节点的 prev 指针，指向左侧：`symbols[right.next].prev = top.pos;`。
-  //
-  // 7. 动态将前驱形成的新 Pair 压入堆：
-  //    如果左侧节点有前驱节点（`symbols[top.pos].prev >= 0`），
-  //    取出前驱节点，与当前合并后的左侧节点拼接 PairKey，去 _mergeRanks 查表。
-  //    如果存在 merges 规则，则将该新 Pair 作为 MergeJob 压入堆。
-  //    (注意：此时合并事件发生的左边界 pos 应该是前驱节点的索引 `symbols[top.pos].prev`)
-  //
-  // 8. 动态将后驱形成的新 Pair 压入堆：
-  //    如果合并后，新的后继节点存在（`symbols[top.pos].next > -1`），
-  //    取出后继节点，与当前合并后的左侧节点拼接 PairKey，去 _mergeRanks 查表。
-  //    如果存在 merges 规则，则将该新 Pair 作为 MergeJob 压入堆（pos 依然是当前 `top.pos`）。
-  //
-  // 9. 循环结束后，过滤出所有未被删除的节点，并将它们的字符串值 c 映射为数组返回。
-  //    (你可以用 symbols.filter(s => s.len > 0).map(s => s.c) 或者用 next 指针遍历链表)
+  while (queue.length > 0) {
+    const top = queue.pop();
+    if (!top) break;
 
-  throw new Error("BPE heap merge loop not implemented. Please implement it here!");
+    const node = symbols[top.pos];
+    // 左节点不存在、被删了、或没有右邻居，直接跳过
+    if (!node || node.len === 0 || node.next === -1) continue;
+
+    const nextNode = symbols[node.next];
+    // 如果右邻居不存在，跳过
+    if (!nextNode) continue;
+
+    // 校验 Pair 依然是最新待合并的
+    if (_mergeRanks.get(`${node.c},${nextNode.c}`) !== top.rank) continue;
+
+    // 执行合并操作
+    node.c += nextNode.c;
+    node.len += nextNode.len;
+    node.next = nextNode.next;
+    nextNode.len = 0; // 标记右侧已被合并
+
+    // 更新后驱的前指指针
+    if (node.next !== -1) {
+      const nextNode = symbols[node.next];
+      if (nextNode) nextNode.prev = top.pos;
+    }
+
+    // 合并节点
+    const pushPair = (leftIdx: number, rightIdx: number) => {
+      const l = symbols[leftIdx];
+      const r = symbols[rightIdx];
+      // 只要两个邻居都存在且没被合并删除
+      if (l && r && l.len > 0 && r.len > 0) {
+        const rank = _mergeRanks.get(`${l.c},${r.c}`);
+        if (rank !== undefined) queue.push({ pos: leftIdx, rank });
+      }
+    };
+
+    // 向左、向右的邻居合并尝试
+    if (node.prev !== -1) pushPair(node.prev, top.pos);
+    if (node.next !== -1) pushPair(top.pos, node.next);
+  }
+  // 返回未删除节点
+  return symbols.filter((s) => s.len > 0).map((s) => s.c);
 }
 
 // 仿照 Math 导出的全局静态字面量 Tokenizer 对象
