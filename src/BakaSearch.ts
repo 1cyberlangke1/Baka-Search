@@ -58,7 +58,8 @@ export class BakaSearch {
       const value = doc[field];
       if (typeof value === "string") {
         fieldsData[field] = value;
-        const fieldTokens = Tokenizer.encode(value);
+        // 索引时前补空格使首词带 ▁ 前缀，与查询 token 一致
+        const fieldTokens = Tokenizer.encode(" " + value);
         tokens.push(...fieldTokens);
       }
     }
