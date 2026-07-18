@@ -1,5 +1,5 @@
 import type { TokenId } from "./types.js";
-import { GEMMA_VOCAB, GEMMA_MERGES, GEMMA_UNK_ID } from "./gemma_vocab.js";
+import { GEMMA_VOCAB, GEMMA_MERGES, GEMMA_UNK_ID } from "./vocab.js";
 
 // 相邻字符合并的优先级 Map (left,right -> rank)
 const _mergeRanks = new Map<string, number>();

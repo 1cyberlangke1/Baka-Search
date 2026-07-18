@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
+// 在最开始 Mock 掉超大的 vocab.js 以免 Vite 解析 16MB 文件报错并加速测试
 
-// 在最开始 Mock 掉超大的 gemma_vocab.js 以免 Vite 解析 16MB 文件报错并加速测试
-vi.mock("../src/gemma_vocab.js", () => {
+vi.mock("../src/vocab.js", () => {
   return {
     GEMMA_VOCAB: {
       "测试": 100,

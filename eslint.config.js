@@ -27,6 +27,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ["dist/", "src/gemma_vocab.js"],
+    ignores: ["dist/", "src/vocab.js"],
   },
 );
