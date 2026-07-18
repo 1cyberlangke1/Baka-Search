@@ -13,6 +13,53 @@ for (let i = 0; i < GEMMA_MERGES.length; i++) {
   }
 }
 
+// ID -> token 字符串的反向映射，用于 query token 展开
+const _idToToken = new Map<TokenId, string>();
+for (const [token, id] of Object.entries(GEMMA_VOCAB)) {
+  _idToToken.set(id, token);
+}
+
+// 对 query token 列表做 metaspace 变体展开：
+// 对于 "word" → 同时匹配 "word" 和 "▁word"
+// 对于 "▁word" → 同时匹配 "▁word" 和 "word"
+// 这解决了 BPE 首个 token 不同的匹配问题
+export function expandQueryTokens(ids: TokenId[]): TokenId[] {
+  if (ids.length === 0) return ids;
+
+  const result: TokenId[] = [];
+  const seen = new Set<TokenId>();
+
+  for (const id of ids) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+
+    const token = _idToToken.get(id);
+    if (token === undefined) continue;
+
+    if (token.startsWith("\u2581")) {
+      const withoutPrefix = token.slice(1);
+      if (withoutPrefix.length > 0) {
+        const altId = GEMMA_VOCAB[withoutPrefix];
+        if (altId !== undefined && !seen.has(altId)) {
+          seen.add(altId);
+          result.push(altId);
+        }
+      }
+    } else {
+      const withPrefix = "\u2581" + token;
+      const altId = GEMMA_VOCAB[withPrefix];
+      if (altId !== undefined && !seen.has(altId)) {
+        seen.add(altId);
+        result.push(altId);
+      }
+    }
+  }
+
+  return result;
+}
+
 // 节点结构，用于在扁平数组中构建双向链表
 interface SymbolNode {
   c: string; // 片段字符串值，如 "hello"

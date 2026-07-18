@@ -1,6 +1,6 @@
 import type { DocId, BakaSearchOptions, SearchOptions, SearchResult } from "./types.js";
 import { InvertedIndex } from "./indexer.js";
-import { Tokenizer } from "./tokenizer.js";
+import { Tokenizer, expandQueryTokens } from "./tokenizer.js";
 import { search } from "./bm25.js";
 
 export class BakaSearch {
@@ -92,12 +92,12 @@ export class BakaSearch {
   // 预期行为：将 query 分词，调用 bm25.search 完成排序，把结果 ID 转换回外部 ID，混入原始字段并返回
   search(query: string, options?: SearchOptions): SearchResult[] {
     const queryTokens = Tokenizer.encode(query);
+    const expandedTokens = expandQueryTokens(queryTokens);
     const searchOptions = {
       topK: options?.topK ?? 10,
     };
 
-    // 调用 bm25 纯函数执行打分搜索
-    const rawResults = search(this._index, queryTokens, searchOptions, this._bm25Params);
+    const rawResults = search(this._index, expandedTokens, searchOptions, this._bm25Params);
 
     return rawResults.map((res) => {
       const internalId = res.id as number;
