@@ -1,0 +1,10 @@
+{
+  "model_id": "google/gemma-4-26B-A4B-it",
+  "hf_mirror": "",
+  "proxy": "http://127.0.0.1:7890",
+  "paths": {
+    "output_dir": "src",
+    "cache_dir": "tmp/data/gemma4-tokenizer",
+    "embed_dir": "tmp/data/gemma4-embed"
+  }
+}
