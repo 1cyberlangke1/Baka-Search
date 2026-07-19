@@ -548,6 +548,7 @@ def main():
         info = DATASETS[name]
         eval_dataset(name, loaders[name], info["split"])
 
+    total_time = 0
     log(f"\n{'=' * 55}")
     log(f"  全部完成")
     log(f"{'=' * 55}")
@@ -556,9 +557,13 @@ def main():
         if raw_path.exists():
             raw = json.loads(raw_path.read_text(encoding="utf-8"))
             avg = float(np.mean([r["ndcg"] for r in raw["results"].values()])) if raw["results"] else 0
+            avg_bridge = float(np.mean([r.get("bridgeNdcg", 0) for r in raw["results"].values()])) if raw["results"] else 0
+            diff = avg_bridge - avg
             tt = raw.get("runTime", 0)
-            log(f"  {name:>10s}: avg nDCG={avg:.4f}  ⏱{tt:.0f}s")
-    log(f"\n  输出目录: docs/benchmark/")
+            total_time += tt
+            log(f"  {name:>10s}: 纯BM25={avg:.4f}  +桥={avg_bridge:.4f}  ({diff:+.4f})  ⏱{tt:.0f}s")
+    log(f"\n  总计: ⏱{total_time:.0f}s ({total_time/60:.1f} min)")
+    log(f"  输出目录: docs/benchmark/")
 
 
 if __name__ == "__main__":
