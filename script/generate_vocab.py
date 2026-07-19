@@ -4,7 +4,7 @@
 用法:
   python script/generate_vocab.py
 
-配置在 config.json（项目根目录），如需代理/镜像修改即可。
+配置在 script/config.json，如需代理/镜像修改即可。
 
 首次运行下载 ~32MB tokenizer.json 缓存到 tmp/data/gemma4-tokenizer/，
 后续运行如果缓存有效则跳过下载。支持断点续传。
@@ -22,7 +22,7 @@ from huggingface_hub import get_token
 
 # ---------- 加载共享配置 ----------
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = ROOT / "config.json"
+CONFIG_PATH = ROOT / "script" / "config.json"
 
 with open(CONFIG_PATH, "r") as f:
     _cfg = json.load(f)
