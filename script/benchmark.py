@@ -246,85 +246,78 @@ def get_dataset_langs(hub: str, split: str) -> list[str]:
 
 
 def output_markdown(name: str, results: dict, langs: list[str], run_time: float):
-    """Write Chinese markdown to docs/benchmark/ with leaderboard ranking."""
     if not results:
         return
 
-    avg = float(np.mean([r["ndcg"] for r in results.values()]))
+    avg_plain = float(np.mean([r["ndcg"] for r in results.values()]))
+    avg_bridge = float(np.mean([r.get("bridgeNdcg", 0) for r in results.values()]))
     total_idx = sum(r["indexTimeMs"] for r in results.values())
     total_docs = sum(r["docCount"] for r in results.values())
     total_queries = sum(r["queryCount"] for r in results.values())
     avg_docs_s = total_docs / (total_idx / 1000) if total_idx > 0 else 0
-    avg_ms_q = np.mean([r["avgSearchMs"] for r in results.values()])
+    avg_ms_plain = np.mean([r["avgSearchMs"] for r in results.values()])
+    avg_ms_bridge = np.mean([r.get("bridgeAvgSearchMs", 0) for r in results.values()])
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     task_name = DATASETS[name]["task"]
 
-    # Leaderboard ranking
-    rank, total_models, top10 = compute_rank(task_name, avg)
+    rank, total_models, top10 = compute_rank(task_name, avg_plain)
 
-    ds_labels = {"miracl": "MIRACL 多语言检索", "belebele": "Belebele 阅读理解检索", "mlqa": "MLQA 跨语言检索"}
-    full_name = "BakaSearch BPE + BM25 (零训练)"
+    ds_labels = {"miracl": "MIRACL", "belebele": "Belebele", "mlqa": "MLQA"}
+    ds_desc = {"miracl": "多语言检索", "belebele": "阅读理解检索", "mlqa": "跨语言检索"}
 
     lines = []
-    lines.append(f"# {full_name} — {ds_labels.get(name, name)}")
+    lines.append(f"# BakaSearch — {ds_labels.get(name, name)} {ds_desc.get(name, '')}")
     lines.append("")
     lines.append(f"生成时间：{now}")
     lines.append("")
 
     # 摘要
+    diff = avg_bridge - avg_plain
     lines.append("## 摘要")
     lines.append("")
     lines.append(f"| 指标 | 数值 |")
     lines.append(f"|------|------|")
-    lines.append(f"| 平均 nDCG@10 | **{avg:.4f}** |")
+    lines.append(f"| 纯 BM25 nDCG@10 | **{avg_plain:.4f}** |")
+    lines.append(f"| +桥扩展 nDCG@10 | **{avg_bridge:.4f}** |")
+    lines.append(f"| 差值 | **{diff:+.4f}** |")
     lines.append(f"| 排行榜排名 | **#{rank} / {total_models}** |")
     lines.append(f"| 总文档数 | {total_docs} |")
     lines.append(f"| 总查询数 | {total_queries} |")
     lines.append(f"| 索引吞吐 | {avg_docs_s:.0f} doc/s |")
-    lines.append(f"| 搜索延迟 | {avg_ms_q:.2f} ms/query |")
+    lines.append(f"| 纯 BM25 搜索延迟 | {avg_ms_plain:.2f} ms/query |")
+    lines.append(f"| +桥扩展搜索延迟 | {avg_ms_bridge:.2f} ms/query |")
     lines.append(f"| 总耗时 | {run_time:.0f}s ({run_time/60:.1f} min) |")
     lines.append("")
 
-    # 分语言结果
-    lines.append("## 分语言结果")
+    # 分语言对比
+    lines.append("## 分语言对比")
     lines.append("")
-    lines.append("| 语种 | nDCG@10 | 文档数 | 查询数 | 索引 (doc/s) | 搜索 (ms/q) |")
-    lines.append("|------|---------|--------|--------|-------------|-------------|")
+    lines.append("| 语种 | 纯 BM25 | +桥扩展 | 差值 | 搜索(ms/q) | 桥搜索(ms/q) |")
+    lines.append("|------|---------|--------|------|-----------|-------------|")
     for lang in langs:
         r = results.get(lang)
         if r:
-            lines.append(f"| {lang} | {r['ndcg']:.4f} | {r['docCount']} | {r['queryCount']} | {r['docsPerSec']:.0f} | {r['avgSearchMs']:.2f} |")
+            d = r.get("bridgeNdcg", 0) - r["ndcg"]
+            lines.append(f"| {lang} | {r['ndcg']:.4f} | {r.get('bridgeNdcg',0):.4f} | {d:+.4f} | {r['avgSearchMs']:.2f} | {r.get('bridgeAvgSearchMs',0):.2f} |")
         else:
             lines.append(f"| {lang} | ❌ | - | - | - | - |")
-    lines.append(f"| **平均** | **{avg:.4f}** | {total_docs} | {total_queries} | {avg_docs_s:.0f} | {avg_ms_q:.2f} |")
+    lines.append(f"| **平均** | **{avg_plain:.4f}** | **{avg_bridge:.4f}** | **{diff:+.4f}** | {avg_ms_plain:.2f} | {avg_ms_bridge:.2f} |")
     lines.append("")
 
     # 排行榜
     lines.append("## 排行榜")
     lines.append("")
-    lines.append("与 mteb leaderboard 上所有模型对比（nDCG@10）：")
-    lines.append("")
-    lines.append(f"| 排名 | 模型 | nDCG@10 |")
-    lines.append(f"|------|------|---------|")
     for i, (m, s) in enumerate(top10):
-        marker = " **← BakaSearch**" if m == "BakaSearch (baka-search)" else ""
-        rank_str = f"#{i+1}"
-        lines.append(f"| {rank_str} | {m}{marker} | {s:.4f} |")
-    lines.append(f"| ... | ... | ... |")
-    lines.append(f"| #{rank} | BakaSearch (baka-search) **←** | **{avg:.4f}** |")
-    lines.append(f"| ... | ... | ... |")
-    lines.append(f"| #{total_models} | （最末） | - |")
-    lines.append("")
-
-    # 方法
-    lines.append("## 方法")
-    lines.append("")
-    lines.append(f"- 分词器：Gemma 4 BPE（262k 词表）")
-    lines.append(f"- 检索器：BakaSearch BM25（k1={_cfg['bridge']['test']['k1'] if 'bridge' in _cfg and 'test' in _cfg['bridge'] else '1.2'}, b={_cfg['bridge']['test']['b'] if 'bridge' in _cfg and 'test' in _cfg['bridge'] else '0.7'}, d={_cfg['bridge']['test']['d'] if 'bridge' in _cfg and 'test' in _cfg['bridge'] else '0.5'})")
-    lines.append(f"- 评测集：{ds_labels.get(name, name)}（{task_name}）")
-    lines.append(f"- 指标：nDCG@10")
-    lines.append(f"- 实现：纯 TypeScript，零外部运行时依赖")
+        prefix = "#" + str(i + 1)
+        marker = "  ← BakaSearch" if m == "BakaSearch (baka-search)" else ""
+        lines.append(f"{prefix}  {m}  {s:.4f}{marker}")
+    lines.append(f"#...")
+    lines.append(f"#{rank}  BakaSearch（纯 BM25）  {avg_plain:.4f}  ←")
+    if avg_bridge != avg_plain:
+        lines.append(f"#{rank}  BakaSearch（+桥扩展）  {avg_bridge:.4f}")
+    lines.append("#...")
+    lines.append(f"#{total_models}  ...")
     lines.append("")
 
     path = DOCS_DIR / f"{name}.md"
@@ -449,17 +442,26 @@ def run_node(corpus_df, queries_df, qrels_df, lang_dir, label):
         return None
 
     out = json.loads(of.read_text(encoding="utf-8"))
-    ndcg_scores = [ndcg10([1 if str(did) in qrel_map.get(qid, set()) else 0 for did in doc_ids])
-                   for qid, doc_ids in out.get("results", {}).items()
-                   if qrel_map.get(qid)]
 
-    avg_ndcg = float(np.mean(ndcg_scores)) if ndcg_scores else 0.0
+    def calc_ndcg(results_key):
+        ndcg_scores = [ndcg10([1 if str(did) in qrel_map.get(qid, set()) else 0 for did in doc_ids])
+                       for qid, doc_ids in out.get(results_key, {}).items()
+                       if qrel_map.get(qid)]
+        return float(np.mean(ndcg_scores)) if ndcg_scores else 0.0
+
+    plain_ndcg = calc_ndcg("plainResults")
+    bridge_ndcg = calc_ndcg("bridgeResults")
+
     dc = out.get("docCount", 0)
     idx_ms = out.get("indexTimeMs", 0)
     result = {
-        "ndcg": avg_ndcg, "docCount": dc, "queryCount": out.get("queryCount", 0),
-        "indexTimeMs": idx_ms, "avgSearchMs": out.get("avgSearchMs", 0),
-        "docsPerSec": dc / (idx_ms / 1000) if idx_ms > 0 else 0, "runTime": rt,
+        "ndcg": plain_ndcg, "bridgeNdcg": bridge_ndcg,
+        "docCount": dc, "queryCount": out.get("queryCount", 0),
+        "indexTimeMs": idx_ms,
+        "avgSearchMs": out.get("plainAvgSearchMs", 0),
+        "bridgeAvgSearchMs": out.get("bridgeAvgSearchMs", 0),
+        "docsPerSec": dc / (idx_ms / 1000) if idx_ms > 0 else 0,
+        "runTime": rt,
     }
     rf.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
@@ -488,14 +490,17 @@ def eval_dataset(name, loader, split):
         if res is None:
             log(f"\r  [{idx:>3}/{len(langs)}] {label}  ❌")
             continue
-        log(f"\r  [{idx:>3}/{len(langs)}] {label}  nDCG={res['ndcg']:.4f}  idx={res['docsPerSec']:.0f}doc/s  srch={res['avgSearchMs']:.2f}ms/q  ⏱{res['runTime']:.1f}s")
+        bridge_str = f" bridge={res.get('bridgeNdcg',0):.4f}" if res.get('bridgeNdcg', 0) != res['ndcg'] else ""
+        log(f"\r  [{idx:>3}/{len(langs)}] {label}  plain={res['ndcg']:.4f}{bridge_str}  idx={res['docsPerSec']:.0f}doc/s  srch={res['avgSearchMs']:.2f}ms/q  ⏱{res['runTime']:.1f}s")
         results[lang] = res
 
     log(f"\n  {'─' * 50}")
     if results:
         avg = float(np.mean([r["ndcg"] for r in results.values()]))
+        avg_bridge = float(np.mean([r.get("bridgeNdcg", 0) for r in results.values()]))
+        diff = avg_bridge - avg
         tt = sum(r["runTime"] for r in results.values())
-        log(f"  平均 nDCG@10: {avg:.4f}  总耗时: {tt:.0f}s")
+        log(f"  纯 BM25: {avg:.4f} (+桥扩展: {avg_bridge:.4f} 差值: {diff:+.4f})  总耗时: {tt:.0f}s")
     else:
         tt = 0.0
 
