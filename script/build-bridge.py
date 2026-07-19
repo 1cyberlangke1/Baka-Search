@@ -226,16 +226,18 @@ def compute_bridge(device: str, force: bool = False):
 
     log("[信息] 加载词表...")
     with open(VOCAB_CACHE, encoding="utf-8") as f:
-        vocab = json.load(f)["model"]["vocab"]
+        tokenizer_data = json.load(f)
+        vocab = tokenizer_data["model"]["vocab"]
     rev = {v: k for k, v in vocab.items()}
-    log(f"  {N} tokens")
+    special_ids = {t["id"] for t in tokenizer_data.get("added_tokens", []) if t.get("special")}
+    log(f"  {N} tokens, {len(special_ids)} special")
 
     log("[信息] 计算 Token 书写系统元数据...")
     script_of = [""] * N
     is_valid = [True] * N
     for tid in range(N):
         tok = rev.get(tid)
-        if not tok or tok.startswith("<") or len(tok) > 25:
+        if not tok or tid in special_ids or len(tok) > 25:
             is_valid[tid] = False
             continue
         for c in tok:
