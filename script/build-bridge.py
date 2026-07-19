@@ -425,12 +425,18 @@ def _escape_js(s: str) -> str:
 def generate_js():
     log("[信息] 加载词表...")
     with open(VOCAB_CACHE, encoding="utf-8") as f:
-        vocab = json.load(f)["model"]["vocab"]
+        tokenizer_data = json.load(f)
+        vocab = tokenizer_data["model"]["vocab"]
     rev_vocab = {v: k for k, v in vocab.items()}
+    special_ids = {t["id"] for t in tokenizer_data.get("added_tokens", []) if t.get("special")}
 
     log("[信息] 读取桥接表...")
     pairs = []
     is_id_format = None
+    filtered_special = 0
+    filtered_byte = 0
+    filtered_unused = 0
+    filtered_meta = 0
 
     with open(BRIDGE_TSV, encoding="utf-8") as f:
         f.readline()
@@ -461,6 +467,8 @@ def generate_js():
                     b_id = int(b_raw)
                 except ValueError:
                     continue
+                a_tok = rev_vocab.get(a_id, "")
+                b_tok = rev_vocab.get(b_id, "")
             else:
                 a_tok = a_raw.replace("_", "\u2581")
                 b_tok = b_raw.replace("_", "\u2581")
@@ -469,7 +477,23 @@ def generate_js():
                 if a_id is None or b_id is None:
                     continue
 
+            # 过滤垃圾边
+            if a_id in special_ids or b_id in special_ids:
+                filtered_special += 1
+                continue
+            if a_tok.startswith("<0x") or b_tok.startswith("<0x"):
+                filtered_byte += 1
+                continue
+            if a_tok.startswith("<unused") or b_tok.startswith("<unused"):
+                filtered_unused += 1
+                continue
+            if a_tok == "\u2581" + b_tok or b_tok == "\u2581" + a_tok:
+                filtered_meta += 1
+                continue
+
             pairs.append((a_id, b_id, sim))
+
+    log(f"  {len(pairs)} 个 PASS 对（过滤: special={filtered_special} byte={filtered_byte} unused={filtered_unused} meta={filtered_meta}）")
 
     log(f"  {len(pairs)} 个 PASS 对")
 
