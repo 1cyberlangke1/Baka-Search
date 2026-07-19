@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../src/vocab.js", () => {
   return {
-    GEMMA_VOCAB: {
+    VOCAB: {
       "测试": 100,
       "测试标题喵": 200,
       "猫娘的诱惑": 300,
@@ -11,8 +11,8 @@ vi.mock("../src/vocab.js", () => {
       "文本一": 500,
       "文本二": 600
     },
-    GEMMA_MERGES: [],
-    GEMMA_UNK_ID: 3
+    MERGES: [],
+    UNK_ID: 3
   };
 });
 

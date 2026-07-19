@@ -1,12 +1,12 @@
 import type { TokenId } from "./types.js";
-import { GEMMA_VOCAB, GEMMA_MERGES, GEMMA_UNK_ID } from "./vocab.js";
+import { VOCAB, MERGES, UNK_ID } from "./vocab.js";
 
 // 相邻字符合并的优先级 Map (left,right -> rank)
 const _mergeRanks = new Map<string, number>();
 
 // 模块加载时一次性初始化：将 merges 数组预构建为 O(1) 查询的 _mergeRanks 优先级 Map
-for (let i = 0; i < GEMMA_MERGES.length; i++) {
-  const merge = GEMMA_MERGES[i];
+for (let i = 0; i < MERGES.length; i++) {
+  const merge = MERGES[i];
   if (merge) {
     const [left, right] = merge;
     _mergeRanks.set(`${left},${right}`, i);
@@ -15,7 +15,7 @@ for (let i = 0; i < GEMMA_MERGES.length; i++) {
 
 // ID -> token 字符串的反向映射，用于 query token 展开
 const _idToToken = new Map<TokenId, string>();
-for (const [token, id] of Object.entries(GEMMA_VOCAB)) {
+for (const [token, id] of Object.entries(VOCAB)) {
   _idToToken.set(id, token);
 }
 
@@ -41,7 +41,7 @@ export function expandQueryTokens(ids: TokenId[]): TokenId[] {
     if (token.startsWith("\u2581")) {
       const withoutPrefix = token.slice(1);
       if (withoutPrefix.length > 0) {
-        const altId = GEMMA_VOCAB[withoutPrefix];
+        const altId = VOCAB[withoutPrefix];
         if (altId !== undefined && !seen.has(altId)) {
           seen.add(altId);
           result.push(altId);
@@ -49,7 +49,7 @@ export function expandQueryTokens(ids: TokenId[]): TokenId[] {
       }
     } else {
       const withPrefix = "\u2581" + token;
-      const altId = GEMMA_VOCAB[withPrefix];
+      const altId = VOCAB[withPrefix];
       if (altId !== undefined && !seen.has(altId)) {
         seen.add(altId);
         result.push(altId);
@@ -162,7 +162,7 @@ function _expandWithByteFallback(text: string): string[] {
   const encoder = new TextEncoder();
   const result: string[] = [];
   for (const char of text) {
-    if (GEMMA_VOCAB[char] !== undefined) {
+    if (VOCAB[char] !== undefined) {
       result.push(char);
     } else {
       const bytes = encoder.encode(char);
@@ -170,7 +170,7 @@ function _expandWithByteFallback(text: string): string[] {
       let allExist = true;
       for (const b of bytes) {
         const token = `<0x${b.toString(16).toUpperCase().padStart(2, "0")}>`;
-        if (GEMMA_VOCAB[token] === undefined) {
+        if (VOCAB[token] === undefined) {
           allExist = false;
           break;
         }
@@ -282,10 +282,10 @@ export const Tokenizer = {
 
     // 3. 将融合后的子字串转换为词表 ID，缺失的使用 unkId 填充，连续 unk 仅保留首个（fuse_unk）
     for (const part of mergedParts) {
-      const id = GEMMA_VOCAB[part];
+      const id = VOCAB[part];
       if (id === undefined) {
         if (!lastWasUnk) {
-          tokens.push(GEMMA_UNK_ID);
+          tokens.push(UNK_ID);
         }
         lastWasUnk = true;
       } else {
@@ -299,11 +299,11 @@ export const Tokenizer = {
 
   // 获取词典的总 Token 数量
   get vocabSize(): number {
-    return Object.keys(GEMMA_VOCAB).length;
+    return Object.keys(VOCAB).length;
   },
 
   // 获取 <unk> 的 TokenId
   get unkId(): TokenId {
-    return GEMMA_UNK_ID;
+    return UNK_ID;
   },
 } as const;
