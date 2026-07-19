@@ -1,7 +1,9 @@
-import type { DocId, BakaSearchOptions, SearchOptions, SearchResult } from "./types.js";
+import type { DocId, TokenId, BakaSearchOptions, SearchOptions, SearchResult } from "./types.js";
 import { InvertedIndex } from "./indexer.js";
 import { Tokenizer, expandQueryTokens } from "./tokenizer.js";
-import { search } from "./bm25.js";
+import { search, searchWeighted } from "./bm25.js";
+import type { WeightedToken } from "./bm25.js";
+import { BridgeTable } from "./BridgeTable.js";
 
 export class BakaSearch {
   // 内部维护的倒排索引实例
@@ -118,6 +120,65 @@ export class BakaSearch {
         ...fields,
       };
     });
+  }
+
+  // 输入：查询 string 文本，可选搜索设置（如 topK）
+  // 输出：Promise<SearchResult[]>
+  // 预期行为：在 search 的基础上，首次调用时自动加载桥接扩展表，
+  //           对每个 query token 查桥接表扩展同义/跨语言 token，
+  //           扩展 token 按 sim 值给 BM25 贡献加权
+  async searchWithBridge(query: string, options?: SearchOptions): Promise<SearchResult[]> {
+    await BridgeTable.load();
+
+    const queryTokens = Tokenizer.encode(query);
+    const metaspaceTokens = expandQueryTokens(queryTokens);
+    const expandedTokens = this._expandWithBridge(metaspaceTokens);
+    const searchOptions = {
+      topK: options?.topK ?? 10,
+    };
+
+    const rawResults = searchWeighted(this._index, expandedTokens, searchOptions, this._bm25Params);
+
+    return rawResults.map((res) => {
+      const internalId = res.id as number;
+      const originalId = this._reverseIdMapping.get(internalId);
+      if (originalId === undefined) {
+        throw new Error(
+          `Internal inconsistency: original ID not found for internal ID ${internalId}`,
+        );
+      }
+
+      const docEntry = this._index.getDocEntry(internalId);
+      const fields = docEntry ? docEntry.fields : {};
+
+      return {
+        ...res,
+        id: originalId,
+        ...fields,
+      };
+    });
+  }
+
+  // 输入：metaspace 展开后的 query token 数组
+  // 输出：WeightedToken 数组，原 token weight=1.0，桥扩展 token weight=sim/100
+  // 预期行为：对每个 token 查桥接表，将扩展出的 target token 加入查询集并赋予降权系数
+  private _expandWithBridge(tokens: TokenId[]): WeightedToken[] {
+    const best = new Map<TokenId, number>();
+    for (const t of tokens) {
+      best.set(t, 1.0);
+    }
+    for (const t of tokens) {
+      for (const bridge of BridgeTable.lookup(t)) {
+        const weight = bridge.sim / 100;
+        const existing = best.get(bridge.id) ?? 0;
+        if (weight > existing) best.set(bridge.id, weight);
+      }
+    }
+    const result: WeightedToken[] = [];
+    for (const [token, weight] of best) {
+      result.push({ token, weight });
+    }
+    return result;
   }
 
   // 输入：无

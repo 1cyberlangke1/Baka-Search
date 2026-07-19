@@ -42,6 +42,83 @@ export function termScore(
 //   - 经过打分、降序排序并截取后的 SearchResult[] 数组
 // 预期行为：
 //   - 循环检索 query 中各 token 对应的 postings，累加 termScore，排序并返回 topK
+// 输入：
+//   - termFreq: 词项在当前文档中的词频 (tf)
+//   - totalDocs: 索引中的文档总数 (N)
+//   - docFreq: 包含该词项的文档总数 (n)
+//   - docLength: 当前文档的总 Token 长度 (dl)
+//   - avgDocLength: 所有文档的平均 Token 长度 (avdl)
+//   - params: BM25 算法参数配置 (包含 k1, b, d 参数)
+//   - weight: 查询词权重 (0-1)，加权版特供
+// 输出：
+//   - 返回该词项在当前文档中的 BM25+ 相关性得分 (number)
+// 预期行为：
+//   - 先算标准 BM25+ termScore，再乘 weight，实现查询词加权
+export function termScoreWeighted(
+  termFreq: number,
+  totalDocs: number,
+  docFreq: number,
+  docLength: number,
+  avgDocLength: number,
+  params: BM25Params,
+  weight: number,
+): number {
+  return termScore(termFreq, totalDocs, docFreq, docLength, avgDocLength, params) * weight;
+}
+
+// 带权重的查询词项，weight 范围 0–1
+// 原 token weight = 1.0，桥扩展 token weight = sim / 100
+export interface WeightedToken {
+  token: TokenId;
+  weight: number;
+}
+
+// 输入：
+//   - index: InvertedIndex 倒排索引实例
+//   - queryTokens: 带权重的查询词项数组
+//   - options: 包含限制返回前 K 个结果 of topK (number) 配置
+//   - params: 已填满默认值的 BM25 算法参数配置 (Required<BM25Params>)
+// 输出：
+//   - 经过打分、降序排序并截取后的 SearchResult[] 数组
+// 预期行为：
+//   - 对每个 token 查倒排表，累加 termScore * weight，排序并返回 topK
+export function searchWeighted(
+  index: InvertedIndex,
+  queryTokens: WeightedToken[],
+  options: { topK: number },
+  params: Required<BM25Params>,
+): SearchResult[] {
+  const scores = new Map<number, number>();
+
+  const totalDocs = index.totalDocs;
+  const avgDocLength = index.avgDocLength;
+
+  for (const { token, weight } of queryTokens) {
+    const postings = index.getPostings(token);
+    if (!postings) continue;
+
+    const docFreq = index.getDocFreq(token);
+
+    for (const [docId, freq] of postings.entries()) {
+      const docEntry = index.getDocEntry(docId);
+      if (!docEntry) continue;
+
+      const score = termScoreWeighted(freq, totalDocs, docFreq, docEntry.length, avgDocLength, params, weight);
+
+      scores.set(docId, (scores.get(docId) ?? 0) + score);
+    }
+  }
+
+  const results: SearchResult[] = Array.from(scores.entries()).map(([docId, score]) => {
+    return {
+      id: docId,
+      score,
+    };
+  });
+
+  return results.sort((a, b) => b.score - a.score).slice(0, options.topK);
+}
+
 export function search(
   index: InvertedIndex,
   queryTokens: TokenId[],
