@@ -168,8 +168,26 @@ export class BakaSearch {
     for (const t of tokens) {
       best.set(t, 1.0);
     }
+
+    // 对每个输入 token 及其 metaspace 变体分别查桥接表
+    const querySet = new Set(tokens);
     for (const t of tokens) {
-      for (const bridge of BridgeTable.lookup(t)) {
+      const token = idToToken.get(t);
+      if (token === undefined) continue;
+      let altId: number | undefined;
+      if (token.startsWith("\u2581")) {
+        const withoutPrefix = token.slice(1);
+        if (withoutPrefix.length > 0) altId = VOCAB[withoutPrefix];
+      } else {
+        const withPrefix = "\u2581" + token;
+        altId = VOCAB[withPrefix];
+      }
+      if (altId !== undefined && !querySet.has(altId as TokenId)) {
+        querySet.add(altId as TokenId);
+      }
+    }
+    for (const qid of querySet) {
+      for (const bridge of BridgeTable.lookup(qid as number)) {
         const weight = bridge.sim / 100;
         const existing = best.get(bridge.id) ?? 0;
         if (weight > existing) best.set(bridge.id, weight);
@@ -177,15 +195,12 @@ export class BakaSearch {
     }
 
     // 对桥扩展 token 也做 metaspace 展开（解决 ▁X ↔ X 不匹配）
-    // 遍历 best 中的新 token（排除原始 tokens）
     const origSet = new Set(tokens);
-    const metaspace: TokenId[] = [];
+    const metaspaceExtras: TokenId[] = [];
     for (const id of best.keys()) {
-      if (!origSet.has(id)) {
-        metaspace.push(id);
-      }
+      if (!origSet.has(id)) metaspaceExtras.push(id);
     }
-    for (const id of metaspace) {
+    for (const id of metaspaceExtras) {
       const token = idToToken.get(id);
       if (token === undefined) continue;
       const currentWeight = best.get(id);
