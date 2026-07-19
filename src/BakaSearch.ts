@@ -1,9 +1,10 @@
 import type { DocId, TokenId, BakaSearchOptions, SearchOptions, SearchResult } from "./types.js";
 import { InvertedIndex } from "./indexer.js";
-import { Tokenizer, expandQueryTokens } from "./tokenizer.js";
+import { Tokenizer, expandQueryTokens, idToToken } from "./tokenizer.js";
 import { search, searchWeighted } from "./bm25.js";
 import type { WeightedToken } from "./bm25.js";
 import { BridgeTable } from "./BridgeTable.js";
+import { VOCAB } from "./vocab.js";
 
 export class BakaSearch {
   // 内部维护的倒排索引实例
@@ -174,6 +175,38 @@ export class BakaSearch {
         if (weight > existing) best.set(bridge.id, weight);
       }
     }
+
+    // 对桥扩展 token 也做 metaspace 展开（解决 ▁X ↔ X 不匹配）
+    // 遍历 best 中的新 token（排除原始 tokens）
+    const origSet = new Set(tokens);
+    const metaspace: TokenId[] = [];
+    for (const id of best.keys()) {
+      if (!origSet.has(id)) {
+        metaspace.push(id);
+      }
+    }
+    for (const id of metaspace) {
+      const token = idToToken.get(id);
+      if (token === undefined) continue;
+      const currentWeight = best.get(id);
+      if (currentWeight === undefined) continue;
+      if (token.startsWith("\u2581")) {
+        const withoutPrefix = token.slice(1);
+        if (withoutPrefix.length > 0) {
+          const altId = VOCAB[withoutPrefix];
+          if (altId !== undefined && !best.has(altId)) {
+            best.set(altId, currentWeight);
+          }
+        }
+      } else {
+        const withPrefix = "\u2581" + token;
+        const altId = VOCAB[withPrefix];
+        if (altId !== undefined && !best.has(altId)) {
+          best.set(altId, currentWeight);
+        }
+      }
+    }
+
     const result: WeightedToken[] = [];
     for (const [token, weight] of best) {
       result.push({ token, weight });

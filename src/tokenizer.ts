@@ -15,6 +15,8 @@ for (let i = 0; i < MERGES.length; i++) {
 
 // ID -> token 字符串的反向映射，用于 query token 展开
 const _idToToken = new Map<TokenId, string>();
+const _idToTokenExport: ReadonlyMap<TokenId, string> = _idToToken;
+export { _idToTokenExport as idToToken };
 for (const [token, id] of Object.entries(VOCAB)) {
   _idToToken.set(id, token);
 }
