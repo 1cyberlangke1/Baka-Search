@@ -153,15 +153,17 @@ def download_embed(force: bool = False):
     local_size = EMBED_PATH.stat().st_size if EMBED_PATH.exists() else 0
     expected_total = 8 + hdr_len + ((8 - hdr_len % 8) % 8) + total_tensor_bytes
 
-    if not force and local_size >= expected_total:
+    if force:
+        EMBED_PATH.unlink(missing_ok=True)
+        local_size = 0
+    elif local_size >= expected_total:
         if _verify_safetensors_header(EMBED_PATH):
-            log(f"[缓存] 嵌入层已存在: {EMBED_PATH}")
+            log(f"[缓存] 嵌入层已存在: {EMBED_PATH} ({size_mb:.0f} MB)")
             return
         else:
             log("[续传] 缓存文件损坏, 重新下载")
             EMBED_PATH.unlink(missing_ok=True)
             local_size = 0
-            doff_offset = 0
     else:
         doff_offset = max(0, local_size - (8 + hdr_len + ((8 - hdr_len % 8) % 8)))
         if doff_offset > 0:
@@ -181,16 +183,18 @@ def download_embed(force: bool = False):
         doff_offset = 0
 
     if doff_offset < total_tensor_bytes:
-        chunk_start = doff_start + doff_offset
-        chunk_end = doff_end - 1
-        log(f"[下载] 张量数据 {doff_offset / 1024**2:.0f}/{total_tensor_bytes / 1024**3:.2f} GB")
+        padded_header = (hdr_len + 7) & ~7
+        data_begin = 8 + padded_header
+        chunk_start = data_begin + doff_start + doff_offset
+        chunk_end = data_begin + doff_end - 1
+        log(f"[下载] 嵌入张量 ({total_tensor_bytes / 1024**3:.2f} GB)")
         t0 = time.time()
         data = _fetch_range(shard_url, chunk_start, chunk_end)
+        elapsed = time.time() - t0
         with open(EMBED_PATH, "ab") as f:
             f.write(data)
-        elapsed = time.time() - t0
-        mb = len(data) / 1024**2
-        log(f"[完成] {mb:.0f} MB in {elapsed:.1f}s ({mb / elapsed:.1f} MB/s)")
+        b = len(data)
+        log(f"[完成] {b} bytes / {elapsed:.0f}s = {b / elapsed / 1024**2:.1f} MB/s")
 
     if not _verify_safetensors_header(EMBED_PATH):
         log("[错误] 嵌入层下载不完整")
@@ -343,7 +347,7 @@ def compute_bridge(device: str, force: bool = False):
                 b_str = rev.get(bid, "").replace("\u2581", "_")
                 s_val = sim_map.get(bid, 0.0)
                 out_lines.append(f"{tid}\t{bid}\t{s_val:.4f}\t0\t0\t0\tPASS\n")
-                pass_lines.append(f"{tid}\t{bid}\t{s_val:.4f}\n")
+                pass_lines.append(f"{a_str}\t{b_str}\t{s_val:.4f}\n")
 
             all_cand.update(same_ids)
             all_bridge.update(bridge_ids)
@@ -381,10 +385,11 @@ def compute_bridge(device: str, force: bool = False):
                     total_blocked += 1
                 total_candidates += 1
 
+                a_str = rev.get(tid, "").replace("\u2581", "_")
                 b_str = rev.get(sid, "").replace("\u2581", "_")
                 out_lines.append(f"{tid}\t{sid}\t{s_sim:.4f}\t{M}\t{votes}\t{thr_needed}\t{verdict}\n")
                 if verdict == "PASS":
-                    pass_lines.append(f"{tid}\t{sid}\t{s_sim:.4f}\n")
+                    pass_lines.append(f"{a_str}\t{b_str}\t{s_sim:.4f}\n")
 
         elapsed = time.time() - t2_start
         speed = batch_end / elapsed if elapsed > 0 else 0
@@ -400,7 +405,7 @@ def compute_bridge(device: str, force: bool = False):
 
     log(f"[写入] {len(pass_lines)} 行 → {BRIDGE_TSV}")
     with open(BRIDGE_TSV, "w", encoding="utf-8") as f:
-        f.write("a_id\tb_id\tsim_ab\n")
+        f.write("a_tok\tb_tok\tsim_ab\n")
         f.writelines(pass_lines)
 
     t_total = time.time() - t1_start

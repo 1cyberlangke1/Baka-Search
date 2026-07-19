@@ -1,6 +1,6 @@
 # BakaSearch — Belebele 阅读理解检索
 
-生成时间：2026-07-19 11:39:50 UTC
+生成时间：2026-07-19 14:02:51 UTC
 
 ## 摘要
 
@@ -9,7 +9,8 @@
 | 纯 BM25 nDCG@10 | **0.4811** |
 | +桥扩展 nDCG@10 | **0.4740** |
 | 差值 | **-0.0071** |
-| 排行榜排名 | **#51 / 89** |
+| 排行榜排名（纯 BM25） | **#51 / 89** |
+| 排行榜排名（+桥扩展） | **#51 / 89** |
 | 总文档数 | 109800 |
 | 总查询数 | 109800 |
 | 索引吞吐 | 1856 doc/s |
@@ -147,19 +148,96 @@
 
 ## 排行榜
 
-#1  Mira190/Euler-Legal-Embedding-V1_df607ed9e25e569514a99c27cdaaab16e76b6dd4  0.9692
-#2  Qwen/Qwen3-Embedding-8B_4e423935c619ae4df87b646a3ce949610c66241c  0.9662
-#3  Octen/Octen-Embedding-8B_2030603c2926ab005fafd824fac5911e271be21f  0.9646
-#4  Qwen/Qwen3-VL-Embedding-8B_2c4565515e0f265c6511776e7193b22c0968ddc7  0.9607
-#5  LingoIITGN/qwen-indic-v1_eacf7d046847412a8e6731f2dedc6d97e176dc6b  0.9516
-#6  BAAI/bge-multilingual-gemma2_992e13d8984fde2c31ef8a3cb2c038aeec513b8a  0.9500
-#7  Octen/Octen-Embedding-4B_6e188e3b072c3e3678b235ad84e6e97bcbb71e8f  0.9462
-#8  Qwen/Qwen3-VL-Embedding-2B_9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda  0.9443
-#9  clips/e5-base-trm-nl_6bd5722f236da48b4b8bcb28cc1fc478f7089956  0.9380
-#10  clips/e5-large-trm-nl_683333f86ed9eb3699b5567f0fdabeb958d412b0  0.9305
-#...
-#51  BakaSearch（纯 BM25）  0.4811  ←
-#51  BakaSearch（+桥扩展）  0.4740
-#...
-#89  ...
+| 排名 | 模型 | nDCG@10 |
+|------|------|---------|
+| #1 | Mira190/Euler-Legal-Embedding-V1 | 0.9692 |
+| #2 | Qwen/Qwen3-Embedding-8B | 0.9662 |
+| #3 | Octen/Octen-Embedding-8B | 0.9646 |
+| #4 | Qwen/Qwen3-VL-Embedding-8B | 0.9607 |
+| #5 | LingoIITGN/qwen-indic-v1 | 0.9516 |
+| #6 | BAAI/bge-multilingual-gemma2 | 0.9500 |
+| #7 | Octen/Octen-Embedding-4B | 0.9462 |
+| #8 | Qwen/Qwen3-VL-Embedding-2B | 0.9443 |
+| #9 | clips/e5-base-trm-nl | 0.9380 |
+| #10 | clips/e5-large-trm-nl | 0.9305 |
+| #11 | clips/e5-small-trm-nl | 0.9244 |
+| #12 | Qwen/Qwen3-Embedding-4B | 0.9219 |
+| #13 | Alibaba-NLP/gte-Qwen2-7B-instruct | 0.9203 |
+| #14 | ICT-TIME-and-Querit/ICT-TIME-and-Querit-embedding-v1 | 0.9058 |
+| #15 | ICT-TIME-and-Querit/BOOM_4B_v1 | 0.9031 |
+| #16 | BidirLM/BidirLM-Omni-2.5B-Embedding | 0.9030 |
+| #17 | SamilPwC-AXNode-GenAI/PwC-Embedding_expr | 0.8967 |
+| #18 | Cohere/Cohere-embed-multilingual-v3.0 | 0.8927 |
+| #19 | Alibaba-NLP/gte-multilingual-base | 0.8920 |
+| #20 | Bytedance/Seed1.6-embedding-1215 | 0.8912 |
+| #21 | Octen/Octen-Embedding-0.6B | 0.8911 |
+| #22 | BidirLM/BidirLM-1.7B-Embedding | 0.8849 |
+| #23 | Lajavaness/bilingual-embedding-large | 0.8845 |
+| #24 | BidirLM/BidirLM-1B-Embedding | 0.8779 |
+| #25 | BAAI/bge-m3 | 0.8778 |
+| #26 | Alibaba-NLP/gte-Qwen2-1.5B-instruct | 0.8739 |
+| #27 | OrdalieTech/Solon-embeddings-large-0.1 | 0.8737 |
+| #28 | GritLM/GritLM-7B | 0.8530 |
+| #29 | IEITYuan/Yuan-embedding-2.0-en | 0.8521 |
+| #30 | GritLM/GritLM-8x7B | 0.8491 |
+| #31 | Qwen/Qwen3-Embedding-0.6B | 0.8486 |
+| #32 | Lajavaness/bilingual-embedding-base | 0.8480 |
+| #33 | HIT-TMG/KaLM-embedding-multilingual-mini-v1 | 0.8427 |
+| #34 | codefuse-ai/F2LLM-0.6B | 0.8384 |
+| #35 | Salesforce/SFR-Embedding-Mistral | 0.8329 |
+| #36 | Cohere/Cohere-embed-multilingual-light-v3.0 | 0.8292 |
+| #37 | BidirLM/BidirLM-0.6B-Embedding | 0.8258 |
+| #38 | Linq-AI-Research/Linq-Embed-Mistral | 0.8239 |
+| #39 | Salesforce/SFR-Embedding-2_R | 0.8082 |
+| #40 | Lajavaness/bilingual-embedding-small | 0.8036 |
+| #41 | Alibaba-NLP/gte-Qwen1.5-7B-instruct | 0.7793 |
+| #42 | HIT-TMG/KaLM-embedding-multilingual-mini-instruct-v1 | 0.7389 |
+| #43 | BidirLM/BidirLM-270M-Embedding | 0.7361 |
+| #44 | Omartificial-Intelligence-Space/Arabert-all-nli-triplet-Matryoshka | 0.7360 |
+| #45 | Sailesh97/Hinvec | 0.7247 |
+| #46 | Omartificial-Intelligence-Space/Arabic-all-nli-triplet-Matryoshka | 0.7136 |
+| #47 | Omartificial-Intelligence-Space/Marbert-all-nli-triplet-Matryoshka | 0.7003 |
+| #48 | Omartificial-Intelligence-Space/Arabic-labse-Matryoshka | 0.6788 |
+| #49 | NovaSearch/jasper_en_vision_language_v1 | 0.6391 |
+| #50 | NovaSearch/stella_en_1.5B_v5 | 0.6054 |
+| #51 | BakaSearch（纯 BM25） | 0.4811 ← |
+| #52 | BakaSearch（+桥扩展） | 0.4740 ← |
+| #53 | Omartificial-Intelligence-Space/Arabic-mpnet-base-all-nli-triplet | 0.4646 |
+| #54 | DeepPavlov/rubert-base-cased | 0.4369 |
+| #55 | Haon-Chen/speed-embedding-7b-instruct | 0.4044 |
+| #56 | bigscience/sgpt-bloom-7b1-msmarco | 0.2051 |
+| #57 | Cohere/Cohere-embed-english-v3.0 | 0.1958 |
+| #58 | VPLabs/SearchMap_Preview | 0.1929 |
+| #59 | NovaSearch/stella_en_400M_v5 | 0.1894 |
+| #60 | Jaume/gemma-2b-embeddings | 0.1302 |
+| #61 | avsolatorio/GIST-large-Embedding-v0 | 0.1002 |
+| #62 | BAAI/bge-base-en-v1.5 | 0.0990 |
+| #63 | Cohere/Cohere-embed-english-light-v3.0 | 0.0851 |
+| #64 | avsolatorio/GIST-Embedding-v0 | 0.0827 |
+| #65 | BAAI/bge-large-en-v1.5 | 0.0804 |
+| #66 | WhereIsAI/UAE-Large-V1 | 0.0750 |
+| #67 | avsolatorio/GIST-small-Embedding-v0 | 0.0649 |
+| #68 | Snowflake/snowflake-arctic-embed-m-long | 0.0623 |
+| #69 | avsolatorio/NoInstruct-small-Embedding-v0 | 0.0606 |
+| #70 | BAAI/bge-small-en-v1.5 | 0.0572 |
+| #71 | Snowflake/snowflake-arctic-embed-m-v1.5 | 0.0551 |
+| #72 | abhinand/MedEmbed-small-v0.1 | 0.0546 |
+| #73 | Mihaiii/Ivysaur | 0.0545 |
+| #74 | Snowflake/snowflake-arctic-embed-l | 0.0507 |
+| #75 | Snowflake/snowflake-arctic-embed-s | 0.0446 |
+| #76 | Mihaiii/Squirtle | 0.0426 |
+| #77 | Snowflake/snowflake-arctic-embed-m | 0.0426 |
+| #78 | aari1995/German_Semantic_STS_V2 | 0.0389 |
+| #79 | Mihaiii/Venusaur | 0.0341 |
+| #80 | Mihaiii/Wartortle | 0.0332 |
+| #81 | Snowflake/snowflake-arctic-embed-xs | 0.0309 |
+| #82 | DeepPavlov/rubert-base-cased-sentence | 0.0291 |
+| #83 | ai-forever/ru-en-RoSBERTa | 0.0260 |
+| #84 | ai-forever/sbert_large_mt_nlu_ru | 0.0243 |
+| #85 | ai-forever/sbert_large_nlu_ru | 0.0234 |
+| #86 | Mihaiii/Bulbasaur | 0.0211 |
+| #87 | DeepPavlov/distilrubert-small-cased-conversational | 0.0194 |
+| #88 | Mihaiii/gte-micro | 0.0168 |
+| #89 | brahmairesearch/slx-v0.1 | 0.0157 |
+| #90 | Mihaiii/gte-micro-v4 | 0.0154 |
 

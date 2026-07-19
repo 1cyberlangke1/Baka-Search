@@ -88,12 +88,9 @@ def _model_name_from_path(path: str) -> str:
     return path.replace("_", "/").split("/")[1] if "_" in path else path
 
 
+import re
+
 def _model_name_from_filename(filename: str) -> str:
-    """Reverse mapping from cache filename to model name."""
-    # filename: results_org__model_hash_task.json
-    # Try extracting org/model from the prefix
-    parts = filename.split("_")
-    # Find the task name to know where model name ends
     task_keywords = ["MIRACLRetrieval", "BelebeleRetrieval", "MLQARetrieval"]
     task_pos = len(filename)
     for kw in task_keywords:
@@ -101,10 +98,12 @@ def _model_name_from_filename(filename: str) -> str:
         if pos != -1 and pos < task_pos:
             task_pos = pos
     model_part = filename[:task_pos].rstrip("_")
-    # Strip "results_" prefix
     if model_part.startswith("results_"):
         model_part = model_part[8:]
     model_part = model_part.replace("__", "/")
+    model_part = re.sub(r"_[0-9a-f]{40}$", "", model_part)
+    model_part = re.sub(r"_[0-9a-f]{40}_", "_", model_part)
+    model_part = re.sub(r"_\d+$", "", model_part)
     return model_part
 
 
@@ -196,19 +195,25 @@ def compute_rank(task_name: str, our_score: float) -> tuple[int, int, list[tuple
 
     scores.sort(key=lambda x: -x[1])
 
-    # Find where our score would rank
-    rank = 1
-    for s_score in scores:
-        if our_score < s_score[1]:
-            rank += 1
-
-    # Build top 10 with our insertion
+    # Insert our score at the correct position
     ours = ("BakaSearch (baka-search)", our_score)
-    top10_all = scores[:9] + [ours] + scores[9:]
-    top10_all.sort(key=lambda x: -x[1])
-    top10 = top10_all[:10]
+    all_scores = []
+    inserted = False
+    for s in scores:
+        if not inserted and our_score >= s[1]:
+            all_scores.append(ours)
+            inserted = True
+        all_scores.append(s)
+    if not inserted:
+        all_scores.append(ours)
 
-    return (rank, len(scores) + 1, top10)
+    rank = 1
+    for i, s in enumerate(all_scores):
+        if s[0] == "BakaSearch (baka-search)":
+            rank = i + 1
+            break
+
+    return (rank, len(all_scores), all_scores)
 
 
 def get_dataset_langs(hub: str, split: str) -> list[str]:
@@ -261,7 +266,10 @@ def output_markdown(name: str, results: dict, langs: list[str], run_time: float)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     task_name = DATASETS[name]["task"]
 
-    rank, total_models, top10 = compute_rank(task_name, avg_plain)
+    rank, total_models, all_scores = compute_rank(task_name, avg_plain)
+    rank_bridge = rank
+    if avg_bridge != avg_plain:
+        rank_bridge, _, _ = compute_rank(task_name, avg_bridge)
 
     ds_labels = {"miracl": "MIRACL", "belebele": "Belebele", "mlqa": "MLQA"}
     ds_desc = {"miracl": "多语言检索", "belebele": "阅读理解检索", "mlqa": "跨语言检索"}
@@ -281,7 +289,8 @@ def output_markdown(name: str, results: dict, langs: list[str], run_time: float)
     lines.append(f"| 纯 BM25 nDCG@10 | **{avg_plain:.4f}** |")
     lines.append(f"| +桥扩展 nDCG@10 | **{avg_bridge:.4f}** |")
     lines.append(f"| 差值 | **{diff:+.4f}** |")
-    lines.append(f"| 排行榜排名 | **#{rank} / {total_models}** |")
+    lines.append(f"| 排行榜排名（纯 BM25） | **#{rank} / {total_models}** |")
+    lines.append(f"| 排行榜排名（+桥扩展） | **#{rank_bridge} / {total_models}** |")
     lines.append(f"| 总文档数 | {total_docs} |")
     lines.append(f"| 总查询数 | {total_queries} |")
     lines.append(f"| 索引吞吐 | {avg_docs_s:.0f} doc/s |")
@@ -305,19 +314,27 @@ def output_markdown(name: str, results: dict, langs: list[str], run_time: float)
     lines.append(f"| **平均** | **{avg_plain:.4f}** | **{avg_bridge:.4f}** | **{diff:+.4f}** | {avg_ms_plain:.2f} | {avg_ms_bridge:.2f} |")
     lines.append("")
 
-    # 排行榜
+    # 排行榜 - 全量 markdown 表格
+    merged = list(all_scores)
+    for i, (m, s) in enumerate(merged):
+        if m == "BakaSearch (baka-search)":
+            merged[i] = ("BakaSearch（纯 BM25）", s)
+            break
+    if avg_bridge != avg_plain:
+        pos = len(merged)
+        for i, (m, s) in enumerate(merged):
+            if avg_bridge >= s:
+                pos = i
+                break
+        merged.insert(pos, ("BakaSearch（+桥扩展）", avg_bridge))
+
     lines.append("## 排行榜")
     lines.append("")
-    for i, (m, s) in enumerate(top10):
-        prefix = "#" + str(i + 1)
-        marker = "  ← BakaSearch" if m == "BakaSearch (baka-search)" else ""
-        lines.append(f"{prefix}  {m}  {s:.4f}{marker}")
-    lines.append(f"#...")
-    lines.append(f"#{rank}  BakaSearch（纯 BM25）  {avg_plain:.4f}  ←")
-    if avg_bridge != avg_plain:
-        lines.append(f"#{rank}  BakaSearch（+桥扩展）  {avg_bridge:.4f}")
-    lines.append("#...")
-    lines.append(f"#{total_models}  ...")
+    lines.append("| 排名 | 模型 | nDCG@10 |")
+    lines.append("|------|------|---------|")
+    for i, (m, s) in enumerate(merged):
+        marker = " ←" if "BakaSearch" in m else ""
+        lines.append(f"| #{i+1} | {m} | {s:.4f}{marker} |")
     lines.append("")
 
     path = DOCS_DIR / f"{name}.md"
