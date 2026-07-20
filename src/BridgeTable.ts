@@ -8,9 +8,10 @@ let _pairs: Int32Array | null = null;
 let _loadPromise: Promise<void> | null = null;
 
 export const BridgeTable = {
-  // 输入：无
-  // 输出：Promise<void>
-  // 预期行为：动态 import bridge-data.js，将 JS 数组转成 TypedArray，仅首次调用时执行
+  /**
+   * 动态 import bridge-data.js，将 JS 数组转成 TypedArray，仅首次调用时执行
+   * @returns Promise<void>
+   */
   async load(): Promise<void> {
     if (_offsets) return;
     if (_loadPromise) return _loadPromise;
@@ -22,9 +23,10 @@ export const BridgeTable = {
     return _loadPromise;
   },
 
-  // 输入：tokenId 查询 token 的 ID
-  // 输出：Array<{ id: TokenId; sim: number }> 目标 token ID 列表及相似度
-  // 预期行为：CSR 偏移量直接索引范围，遍历 pairs 拆包 dstId/sim，O(1) 时间复杂度
+  /**
+   * @param tokenId - 查询 token 的 ID
+   * @returns 目标 token ID 列表及相似度
+   */
   lookup(tokenId: number): Array<{ id: TokenId; sim: number }> {
     if (!_offsets || !_pairs) return [];
     const start = _offsets[tokenId];
@@ -43,8 +45,10 @@ export const BridgeTable = {
     return result;
   },
 
-  // 输入：无
-  // 输出：boolean 桥接表是否已加载
+  /**
+   * 桥接表是否已加载
+   * @returns boolean
+   */
   get isLoaded(): boolean {
     return _offsets !== null;
   },

@@ -1,6 +1,6 @@
 import type { DocId, TokenId } from "./types.js";
 
-// 文档在倒排索引中的保存实体
+/** 文档在倒排索引中的保存实体 */
 export interface DocEntry {
   id: DocId;
   length: number;
@@ -17,9 +17,11 @@ export class InvertedIndex {
   // 索引内所有文档的累加 Token 总数
   private _totalLength = 0;
 
-  // 输入：内部 docId（自增 number），该文档提取的 tokens，文档的原始 fields 数据
-  // 输出：无
-  // 预期行为：计算词频，更新 _terms 倒排表，记录元数据，累加文档长度
+  /**
+   * @param docId - 内部 docId（自增 number）
+   * @param tokens - 该文档提取的 tokens
+   * @param fields - 文档的原始 fields 数据
+   */
   addDocument(docId: number, tokens: TokenId[], fields: Record<string, string>): void {
     // 如果已经存在该文档，需要先清理旧的词项记录
     if (this._docs.has(docId)) {
@@ -54,9 +56,9 @@ export class InvertedIndex {
     this._totalLength += tokens.length;
   }
 
-  // 输入：内部 docId（自增 number）
-  // 输出：无
-  // 预期行为：从倒排表 _terms 中清理对应的 docId 频次记录，清除文档元数据，减少总长度
+  /**
+   * @param docId - 内部 docId（自增 number）
+   */
   removeDocument(docId: number): void {
     const entry = this._docs.get(docId);
     if (!entry) return;
@@ -81,42 +83,42 @@ export class InvertedIndex {
     this._docs.delete(docId);
   }
 
-  // 输入：TokenId
-  // 输出：Map<docId, termFreq> 或 null
-  // 预期行为：返回包含该 termId 的所有文档及其频次的 Posting List
+  /**
+   * @param termId - TokenId
+   * @returns Map<docId, termFreq> 或 null
+   */
   getPostings(termId: TokenId): Map<number, number> | null {
     return this._terms.get(termId) ?? null;
   }
 
-  // 输入：TokenId
-  // 输出：引用了该词项的文档总数
-  // 预期行为：查询 postings 映射的 size，不存在返回 0
+  /**
+   * @param termId - TokenId
+   * @returns 引用了该词项的文档总数
+   */
   getDocFreq(termId: TokenId): number {
     return this._terms.get(termId)?.size ?? 0;
   }
 
-  // 输入：内部 docId
-  // 输出：对应的 DocEntry 或 null
-  // 预期行为：获取保存的文档详情
+  /**
+   * @param docId - 内部 docId
+   * @returns 对应的 DocEntry 或 null
+   */
   getDocEntry(docId: number): DocEntry | null {
     return this._docs.get(docId) ?? null;
   }
 
-  // 输入：无
-  // 输出：总文档数
+  /** @returns 总文档数 */
   get totalDocs(): number {
     return this._docs.size;
   }
 
-  // 输入：无
-  // 输出：平均文档 Token 长度
+  /** @returns 平均文档 Token 长度 */
   get avgDocLength(): number {
     if (this.totalDocs === 0) return 0;
     return this._totalLength / this.totalDocs;
   }
 
-  // 输入：无
-  // 输出：词典中的词项（Token）总数
+  /** @returns 词典中的词项（Token）总数 */
   get termCount(): number {
     return this._terms.size;
   }

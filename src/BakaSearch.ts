@@ -21,9 +21,9 @@ export class BakaSearch {
   // 内部 ID 到外部 ID 的反向映射 Map，用于搜索结果转换
   private _reverseIdMapping = new Map<number, DocId>();
 
-  // 输入：可选配置 options，可以指定索引字段 fields 和 BM25 参数
-  // 输出：BakaSearch 实例
-  // 预期行为：保存相关参数，Tokenizer 采用全局静态调用，无需在此实例化
+  /**
+   * @param options - 可选配置，指定索引字段和 BM25 参数
+   */
   constructor(options?: BakaSearchOptions) {
     this._fields = options?.fields;
     this._bm25Params = {
@@ -33,9 +33,9 @@ export class BakaSearch {
     };
   }
 
-  // 输入：具有唯一 id 的文档，且可以包含多个字段
-  // 输出：无
-  // 预期行为：转换 ID 映射，过滤并提取 string 字段进行分词，累加 tokens 后存入 InvertedIndex
+  /**
+   * @param doc - 具有唯一 id 的文档，可包含多个字段
+   */
   add(doc: { id: DocId } & Record<string, string>): void {
     if ((doc.id as unknown) === undefined || (doc.id as unknown) === null) {
       throw new Error("Document must have a valid 'id' field");
@@ -70,18 +70,18 @@ export class BakaSearch {
     this._index.addDocument(internalId, tokens, fieldsData);
   }
 
-  // 输入：文档对象数组
-  // 输出：无
-  // 预期行为：循环添加各个文档
+  /**
+   * @param docs - 文档对象数组
+   */
   addAll(docs: ({ id: DocId } & Record<string, string>)[]): void {
     for (const doc of docs) {
       this.add(doc);
     }
   }
 
-  // 输入：外部 DocId
-  // 输出：无
-  // 预期行为：查找映射关系，然后将文档从 InvertedIndex 中删除，最后清理映射表
+  /**
+   * @param id - 外部 DocId
+   */
   remove(id: DocId): void {
     const internalId = this._idMapping.get(id);
     if (internalId !== undefined) {
@@ -91,9 +91,11 @@ export class BakaSearch {
     }
   }
 
-  // 输入：查询 string 文本，可选搜索设置（如 topK）
-  // 输出：SearchResult 数组
-  // 预期行为：将 query 分词，调用 bm25.search 完成排序，把结果 ID 转换回外部 ID，混入原始字段并返回
+  /**
+   * @param query - 查询文本
+   * @param options - 可选搜索设置（如 topK）
+   * @returns 排序后的 SearchResult 数组
+   */
   search(query: string, options?: SearchOptions): SearchResult[] {
     const queryTokens = Tokenizer.encode(query);
     const expandedTokens = expandQueryTokens(queryTokens);
@@ -123,11 +125,11 @@ export class BakaSearch {
     });
   }
 
-  // 输入：查询 string 文本，可选搜索设置（如 topK）
-  // 输出：Promise<SearchResult[]>
-  // 预期行为：在 search 的基础上，首次调用时自动加载桥接扩展表，
-  //           对每个 query token 查桥接表扩展同义/跨语言 token，
-  //           扩展 token 按 sim 值给 BM25 贡献加权
+  /**
+   * @param query - 查询文本
+   * @param options - 可选搜索设置（如 topK）
+   * @returns 排序后的 SearchResult 数组
+   */
   async searchWithBridge(query: string, options?: SearchOptions): Promise<SearchResult[]> {
     await BridgeTable.load();
 
@@ -160,9 +162,10 @@ export class BakaSearch {
     });
   }
 
-  // 输入：metaspace 展开后的 query token 数组
-  // 输出：WeightedToken 数组，原 token weight=1.0，桥扩展 token weight=sim/100
-  // 预期行为：对每个 token 查桥接表，将扩展出的 target token 加入查询集并赋予降权系数
+  /**
+   * @param tokens - metaspace 展开后的 query token 数组
+   * @returns WeightedToken 数组，原 token weight=1.0，桥扩展 token weight=sim/100
+   */
   private _expandWithBridge(tokens: TokenId[]): WeightedToken[] {
     const best = new Map<TokenId, number>();
     for (const t of tokens) {
@@ -182,12 +185,12 @@ export class BakaSearch {
         const withPrefix = "\u2581" + token;
         altId = VOCAB[withPrefix];
       }
-      if (altId !== undefined && !querySet.has(altId as TokenId)) {
-        querySet.add(altId as TokenId);
+      if (altId !== undefined && !querySet.has(altId)) {
+        querySet.add(altId);
       }
     }
     for (const qid of querySet) {
-      for (const bridge of BridgeTable.lookup(qid as number)) {
+      for (const bridge of BridgeTable.lookup(qid)) {
         const weight = bridge.sim / 100;
         const existing = best.get(bridge.id) ?? 0;
         if (weight > existing) best.set(bridge.id, weight);
@@ -229,8 +232,9 @@ export class BakaSearch {
     return result;
   }
 
-  // 输入：无
-  // 输出：包含文档总数和词条总数的统计数据
+  /**
+   * @returns 包含文档总数和词条总数的统计数据
+   */
   get stats(): { documentCount: number; termCount: number } {
     return {
       documentCount: this._index.totalDocs,

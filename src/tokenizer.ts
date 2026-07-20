@@ -21,10 +21,14 @@ for (const [token, id] of Object.entries(VOCAB)) {
   _idToToken.set(id, token);
 }
 
-// 对 query token 列表做 metaspace 变体展开：
-// 对于 "word" → 同时匹配 "word" 和 "▁word"
-// 对于 "▁word" → 同时匹配 "▁word" 和 "word"
-// 这解决了 BPE 首个 token 不同的匹配问题
+/**
+ * 对 query token 列表做 metaspace 变体展开：
+ * 对于 "word" → 同时匹配 "word" 和 "▁word"
+ * 对于 "▁word" → 同时匹配 "▁word" 和 "word"
+ * 这解决了 BPE 首个 token 不同的匹配问题
+ * @param ids - query token ID 数组
+ * @returns 展开后的 TokenId 数组
+ */
 export function expandQueryTokens(ids: TokenId[]): TokenId[] {
   if (ids.length === 0) return ids;
 
@@ -156,10 +160,11 @@ class MinHeap {
   }
 }
 
-// 参考 huggingface tokenizer 的 BPE 实现
-// 输入：预切分好的单个子词片 (例如 " hello" 或 "world")
-// 输出：BPE 合并后的子单元字符串数组
-// 预期行为：使用双向指针链表与二叉最小堆优先队列实现高吞吐量的 BPE 合并循环
+/**
+ * 逐字查词表，若不存在则尝试 UTF-8 byte fallback（<0xNN> 格式）
+ * @param text - 预切分好的单个子词片（如 " hello" 或 "world"）
+ * @returns 子单元字符串数组
+ */
 function _expandWithByteFallback(text: string): string[] {
   const encoder = new TextEncoder();
   const result: string[] = [];
@@ -188,6 +193,11 @@ function _expandWithByteFallback(text: string): string[] {
   return result;
 }
 
+/**
+ * BPE 合并循环，使用双向指针链表与二叉最小堆实现
+ * @param word - 预切分好的单个子词片（如 " hello" 或 "world"）
+ * @returns BPE 合并后的子单元字符串数组
+ */
 function _mergeWord(word: string): string[] {
   const chars = _expandWithByteFallback(word);
   if (chars.length <= 1) return chars;
@@ -264,11 +274,11 @@ function _mergeWord(word: string): string[] {
   return symbols.filter((s) => s.len > 0).map((s) => s.c);
 }
 
-// 仿照 Math 导出的全局静态字面量 Tokenizer 对象
 export const Tokenizer = {
-  // 输入：待分词的原始文本字符串 text
-  // 输出：编码后的 TokenId 数组
-  // 预期行为：Metaspace 转换、正则预分词、遍历调用 _mergeWord 进行 BPE 合并、查表转 TokenId
+  /**
+   * @param text - 待分词的原始文本
+   * @returns 编码后的 TokenId 数组
+   */
   encode(text: string): TokenId[] {
     if (!text) return [];
 
@@ -299,12 +309,12 @@ export const Tokenizer = {
     return tokens;
   },
 
-  // 获取词典的总 Token 数量
+  /** @returns 词典的总 Token 数量 */
   get vocabSize(): number {
     return Object.keys(VOCAB).length;
   },
 
-  // 获取 <unk> 的 TokenId
+  /** @returns `<unk>` 的 TokenId */
   get unkId(): TokenId {
     return UNK_ID;
   },

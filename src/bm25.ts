@@ -1,17 +1,15 @@
 import type { TokenId, SearchResult, BM25Params } from "./types.js";
 import type { InvertedIndex } from "./indexer.js";
 
-// 输入：
-//   - termFreq: 词项在当前文档中的词频 (tf)
-//   - totalDocs: 索引中的文档总数 (N)
-//   - docFreq: 包含该词项的文档总数 (n)
-//   - docLength: 当前文档的总 Token 长度 (dl)
-//   - avgDocLength: 所有文档的平均 Token 长度 (avdl)
-//   - params: BM25 算法参数配置 (包含 k1, b, d 参数)
-// 输出：
-//   - 返回该词项在当前文档中的 BM25+ 相关性得分 (number)
-// 预期行为：
-//   - 计算并返回包含保底偏移量 d (delta) 的 BM25+ 词项得分喵！
+/**
+ * @param termFreq - 词项在当前文档中的词频 (tf)
+ * @param totalDocs - 索引中的文档总数 (N)
+ * @param docFreq - 包含该词项的文档总数 (n)
+ * @param docLength - 当前文档的总 Token 长度 (dl)
+ * @param avgDocLength - 所有文档的平均 Token 长度 (avdl)
+ * @param params - BM25 算法参数配置 (k1, b, d)
+ * @returns 该词项在当前文档中的 BM25+ 相关性得分
+ */
 export function termScore(
   termFreq: number,
   totalDocs: number,
@@ -33,27 +31,16 @@ export function termScore(
   return score + d * idf;
 }
 
-// 输入：
-//   - index: InvertedIndex 倒排索引实例
-//   - queryTokens: 检索 query 分词后的 TokenId 数组
-//   - options: 包含限制返回前 K 个结果 of topK (number) 配置
-//   - params: 已填满默认值的 BM25 算法参数配置 (Required<BM25Params>)
-// 输出：
-//   - 经过打分、降序排序并截取后的 SearchResult[] 数组
-// 预期行为：
-//   - 循环检索 query 中各 token 对应的 postings，累加 termScore，排序并返回 topK
-// 输入：
-//   - termFreq: 词项在当前文档中的词频 (tf)
-//   - totalDocs: 索引中的文档总数 (N)
-//   - docFreq: 包含该词项的文档总数 (n)
-//   - docLength: 当前文档的总 Token 长度 (dl)
-//   - avgDocLength: 所有文档的平均 Token 长度 (avdl)
-//   - params: BM25 算法参数配置 (包含 k1, b, d 参数)
-//   - weight: 查询词权重 (0-1)，加权版特供
-// 输出：
-//   - 返回该词项在当前文档中的 BM25+ 相关性得分 (number)
-// 预期行为：
-//   - 先算标准 BM25+ termScore，再乘 weight，实现查询词加权
+/**
+ * @param termFreq - 词项在当前文档中的词频 (tf)
+ * @param totalDocs - 索引中的文档总数 (N)
+ * @param docFreq - 包含该词项的文档总数 (n)
+ * @param docLength - 当前文档的总 Token 长度 (dl)
+ * @param avgDocLength - 所有文档的平均 Token 长度 (avdl)
+ * @param params - BM25 算法参数配置 (k1, b, d)
+ * @param weight - 查询词权重 (0-1)
+ * @returns 加权后的 BM25+ 相关性得分
+ */
 export function termScoreWeighted(
   termFreq: number,
   totalDocs: number,
@@ -66,22 +53,19 @@ export function termScoreWeighted(
   return termScore(termFreq, totalDocs, docFreq, docLength, avgDocLength, params) * weight;
 }
 
-// 带权重的查询词项，weight 范围 0–1
-// 原 token weight = 1.0，桥扩展 token weight = sim / 100
+/** 带权重的查询词项，weight 范围 0–1。原 token weight=1.0，桥扩展 token weight=sim/100 */
 export interface WeightedToken {
   token: TokenId;
   weight: number;
 }
 
-// 输入：
-//   - index: InvertedIndex 倒排索引实例
-//   - queryTokens: 带权重的查询词项数组
-//   - options: 包含限制返回前 K 个结果 of topK (number) 配置
-//   - params: 已填满默认值的 BM25 算法参数配置 (Required<BM25Params>)
-// 输出：
-//   - 经过打分、降序排序并截取后的 SearchResult[] 数组
-// 预期行为：
-//   - 对每个 token 查倒排表，累加 termScore * weight，排序并返回 topK
+/**
+ * @param index - InvertedIndex 倒排索引实例
+ * @param queryTokens - 带权重的查询词项数组
+ * @param options - 配置，包含 topK
+ * @param params - BM25 算法参数
+ * @returns 排序后的 SearchResult[] 数组
+ */
 export function searchWeighted(
   index: InvertedIndex,
   queryTokens: WeightedToken[],
@@ -119,6 +103,13 @@ export function searchWeighted(
   return results.sort((a, b) => b.score - a.score).slice(0, options.topK);
 }
 
+/**
+ * @param index - InvertedIndex 倒排索引实例
+ * @param queryTokens - 查询词项数组
+ * @param options - 配置，包含 topK
+ * @param params - BM25 算法参数
+ * @returns 排序后的 SearchResult[] 数组
+ */
 export function search(
   index: InvertedIndex,
   queryTokens: TokenId[],

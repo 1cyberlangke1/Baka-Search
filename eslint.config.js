@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import jsdoc from "eslint-plugin-jsdoc";
 
 export default tseslint.config(
   js.configs.recommended,
@@ -14,6 +15,9 @@ export default tseslint.config(
     extends: [
       ...tseslint.configs.strictTypeChecked,
     ],
+    plugins: {
+      jsdoc,
+    },
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -24,6 +28,9 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrors: "none" }],
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
+      "jsdoc/require-param": ["error", { checkDestructured: false }],
+      "jsdoc/require-returns": "error",
+      "jsdoc/check-param-names": "off",
     },
   },
   {
