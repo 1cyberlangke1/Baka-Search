@@ -17,6 +17,10 @@ export class InvertedIndex {
   // 索引内所有文档的累加 Token 总数
   private _totalLength = 0;
 
+  // 极致性能优化：扁平的文档长度数组与 Map 词频统计复用缓冲区喵
+  private _docLengths: number[] = [];
+  private _termFreqBuf = new Map<TokenId, number>();
+
   /**
    * @param docId - 内部 docId（自增 number）
    * @param tokens - 该文档提取的 tokens
@@ -28,14 +32,16 @@ export class InvertedIndex {
       this.removeDocument(docId);
     }
 
-    // 统计当前文档内每个 token 出现的频次
-    const termFreqs = new Map<TokenId, number>();
-    for (const token of tokens) {
-      termFreqs.set(token, (termFreqs.get(token) ?? 0) + 1);
+    // 统计当前文档内每个 token 出现的频次，复用 Map 缓存降低 GC 压力喵
+    this._termFreqBuf.clear();
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      if (token === undefined) continue;
+      this._termFreqBuf.set(token, (this._termFreqBuf.get(token) ?? 0) + 1);
     }
 
     // 更新全局的倒排索引表
-    for (const [token, freq] of termFreqs.entries()) {
+    for (const [token, freq] of this._termFreqBuf.entries()) {
       let postings = this._terms.get(token);
       if (!postings) {
         postings = new Map<number, number>();
@@ -44,8 +50,11 @@ export class InvertedIndex {
       postings.set(docId, freq);
     }
 
-    // 保存该文档所拥有的 Token 集合用于后续高效删除
-    this._docToTokens.set(docId, new Set(tokens));
+    // 保存该文档所拥有的 Token 集合用于后续高效删除（复用已去重的键集合喵）
+    this._docToTokens.set(docId, new Set(this._termFreqBuf.keys()));
+
+    // 快速记录扁平文档长度喵
+    this._docLengths[docId] = tokens.length;
 
     // 保存文档元数据
     this._docs.set(docId, {
@@ -63,7 +72,7 @@ export class InvertedIndex {
     const entry = this._docs.get(docId);
     if (!entry) return;
 
-    // 根据记录的 Token 集合精确清理，避免遍历所有词项
+    // 根据记录 of Token 集合精确清理，避免遍历所有词项
     const tokenSet = this._docToTokens.get(docId);
     if (tokenSet) {
       for (const token of tokenSet) {
@@ -79,6 +88,7 @@ export class InvertedIndex {
       this._docToTokens.delete(docId);
     }
 
+    this._docLengths[docId] = 0; // 重置该文档长度喵
     this._totalLength -= entry.length;
     this._docs.delete(docId);
   }
@@ -105,6 +115,15 @@ export class InvertedIndex {
    */
   getDocEntry(docId: number): DocEntry | null {
     return this._docs.get(docId) ?? null;
+  }
+
+  /**
+   * 获取指定内部 ID 的文档长度，O(1) 扁平数组查询喵
+   * @param docId - 内部 docId
+   * @returns 文档 Token 长度
+   */
+  getDocLength(docId: number): number {
+    return this._docLengths[docId] ?? 0;
   }
 
   /** @returns 总文档数 */

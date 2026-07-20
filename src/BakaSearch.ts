@@ -50,20 +50,38 @@ export class BakaSearch {
     this._idMapping.set(doc.id, internalId);
     this._reverseIdMapping.set(internalId, doc.id);
 
-    // 决定要索引的字段：优先采用配置的 _fields，否则自动筛选除 id 外所有值为 string 的字段
-    const fieldsToProcess =
-      this._fields ?? Object.keys(doc).filter((k) => k !== "id" && typeof doc[k] === "string");
-
     const tokens: number[] = [];
     const fieldsData: Record<string, string> = {};
 
-    for (const field of fieldsToProcess) {
-      const value = doc[field];
-      if (typeof value === "string") {
-        fieldsData[field] = value;
-        // 索引时前补空格使首词带 ▁ 前缀，与查询 token 一致
-        const fieldTokens = Tokenizer.encode(" " + value);
-        tokens.push(...fieldTokens);
+    // 决定要索引的字段：优先采用配置的 _fields，否则自动筛选除 id 外所有值为 string 的字段（优化掉 filter 避免临时数组分配喵）
+    if (this._fields) {
+      for (let i = 0; i < this._fields.length; i++) {
+        const field = this._fields[i];
+        if (field === undefined) continue;
+        const value = doc[field];
+        if (typeof value === "string") {
+          fieldsData[field] = value;
+          const fieldTokens = Tokenizer.encode(" " + value);
+          for (let j = 0; j < fieldTokens.length; j++) {
+            const t = fieldTokens[j];
+            if (t !== undefined) tokens.push(t);
+          }
+        }
+      }
+    } else {
+      const keys = Object.keys(doc);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        if (key === undefined || key === "id") continue;
+        const value = doc[key];
+        if (typeof value === "string") {
+          fieldsData[key] = value;
+          const fieldTokens = Tokenizer.encode(" " + value);
+          for (let j = 0; j < fieldTokens.length; j++) {
+            const t = fieldTokens[j];
+            if (t !== undefined) tokens.push(t);
+          }
+        }
       }
     }
 
@@ -115,13 +133,14 @@ export class BakaSearch {
       }
 
       const docEntry = this._index.getDocEntry(internalId);
-      const fields = docEntry ? docEntry.fields : {};
-
-      return {
-        ...res,
+      const result: SearchResult = {
         id: originalId,
-        ...fields,
+        score: res.score,
       };
+      if (docEntry) {
+        Object.assign(result, docEntry.fields);
+      }
+      return result;
     });
   }
 
@@ -131,7 +150,10 @@ export class BakaSearch {
    * @returns 排序后的 SearchResult 数组
    */
   async searchWithBridge(query: string, options?: SearchOptions): Promise<SearchResult[]> {
-    await BridgeTable.load();
+    // 首次调用加载，后续已加载时同步返回，消除 await 微任务开销喵
+    if (!BridgeTable.isLoaded) {
+      await BridgeTable.load();
+    }
 
     const queryTokens = Tokenizer.encode(query);
     const metaspaceTokens = expandQueryTokens(queryTokens);
@@ -152,13 +174,14 @@ export class BakaSearch {
       }
 
       const docEntry = this._index.getDocEntry(internalId);
-      const fields = docEntry ? docEntry.fields : {};
-
-      return {
-        ...res,
+      const result: SearchResult = {
         id: originalId,
-        ...fields,
+        score: res.score,
       };
+      if (docEntry) {
+        Object.assign(result, docEntry.fields);
+      }
+      return result;
     });
   }
 
@@ -168,13 +191,17 @@ export class BakaSearch {
    */
   private _expandWithBridge(tokens: TokenId[]): WeightedToken[] {
     const best = new Map<TokenId, number>();
-    for (const t of tokens) {
-      best.set(t, 1.0);
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (t !== undefined) best.set(t, 1.0);
     }
 
-    // 对每个输入 token 及其 metaspace 变体分别查桥接表
-    const querySet = new Set(tokens);
-    for (const t of tokens) {
+    // 对每个输入 token 及其 metaspace 变体分别查桥接表喵
+    const origSet = new Set(tokens);
+    const querySet = new Set(origSet);
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (t === undefined) continue;
       const token = idToToken.get(t);
       if (token === undefined) continue;
       let altId: number | undefined;
@@ -189,21 +216,23 @@ export class BakaSearch {
         querySet.add(altId);
       }
     }
+
     for (const qid of querySet) {
-      for (const bridge of BridgeTable.lookup(qid)) {
-        const weight = bridge.sim / 100;
-        const existing = best.get(bridge.id) ?? 0;
-        if (weight > existing) best.set(bridge.id, weight);
-      }
+      BridgeTable.lookupForEach(qid, (id, sim) => {
+        const weight = sim / 100;
+        const existing = best.get(id) ?? 0;
+        if (weight > existing) best.set(id, weight);
+      });
     }
 
     // 对桥扩展 token 也做 metaspace 展开（解决 ▁X ↔ X 不匹配）
-    const origSet = new Set(tokens);
     const metaspaceExtras: TokenId[] = [];
     for (const id of best.keys()) {
       if (!origSet.has(id)) metaspaceExtras.push(id);
     }
-    for (const id of metaspaceExtras) {
+    for (let i = 0; i < metaspaceExtras.length; i++) {
+      const id = metaspaceExtras[i];
+      if (id === undefined) continue;
       const token = idToToken.get(id);
       if (token === undefined) continue;
       const currentWeight = best.get(id);

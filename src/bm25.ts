@@ -77,28 +77,38 @@ export function searchWeighted(
   const totalDocs = index.totalDocs;
   const avgDocLength = index.avgDocLength;
 
-  for (const { token, weight } of queryTokens) {
+  const k1 = params.k1;
+  const b = params.b;
+  const d = params.d;
+
+  for (let i = 0; i < queryTokens.length; i++) {
+    const qt = queryTokens[i];
+    if (qt === undefined) continue;
+    const { token, weight } = qt;
+
     const postings = index.getPostings(token);
     if (!postings) continue;
 
-    const docFreq = index.getDocFreq(token);
+    const docFreq = postings.size; // 消除 getDocFreq 冗余 Map 查询喵
+    const idf = Math.log(1 + (totalDocs - docFreq + 0.5) / (docFreq + 0.5)); // 内联 IDF 预计算喵
 
-    for (const [docId, freq] of postings.entries()) {
-      const docEntry = index.getDocEntry(docId);
-      if (!docEntry) continue;
-
-      const score = termScoreWeighted(freq, totalDocs, docFreq, docEntry.length, avgDocLength, params, weight);
+    for (const [docId, freq] of postings) {
+      const dl = index.getDocLength(docId); // O(1) 数组长度查询喵
+      const tfScore = (freq * (k1 + 1)) / (freq + k1 * (1 - b + (b * dl) / avgDocLength));
+      const score = (idf * tfScore + d * idf) * weight;
 
       scores.set(docId, (scores.get(docId) ?? 0) + score);
     }
   }
 
-  const results: SearchResult[] = Array.from(scores.entries()).map(([docId, score]) => {
-    return {
+  // 消除 Array.from().map() 产生的双重中间数组分配喵
+  const results: SearchResult[] = [];
+  for (const [docId, score] of scores) {
+    results.push({
       id: docId,
       score,
-    };
-  });
+    });
+  }
 
   return results.sort((a, b) => b.score - a.score).slice(0, options.topK);
 }
@@ -116,33 +126,13 @@ export function search(
   options: { topK: number },
   params: Required<BM25Params>,
 ): SearchResult[] {
-  const scores = new Map<number, number>();
-
-  const totalDocs = index.totalDocs;
-  const avgDocLength = index.avgDocLength;
-
-  for (const token of queryTokens) {
-    const postings = index.getPostings(token);
-    if (!postings) continue;
-
-    const docFreq = index.getDocFreq(token);
-
-    for (const [docId, freq] of postings.entries()) {
-      const docEntry = index.getDocEntry(docId);
-      if (!docEntry) continue;
-
-      const score = termScore(freq, totalDocs, docFreq, docEntry.length, avgDocLength, params);
-
-      scores.set(docId, (scores.get(docId) ?? 0) + score);
+  // 转换为加权 token 调用，统一实现并降低维护成本喵
+  const weighted: WeightedToken[] = [];
+  for (let i = 0; i < queryTokens.length; i++) {
+    const t = queryTokens[i];
+    if (t !== undefined) {
+      weighted.push({ token: t, weight: 1.0 });
     }
   }
-
-  const results: SearchResult[] = Array.from(scores.entries()).map(([docId, score]) => {
-    return {
-      id: docId,
-      score,
-    };
-  });
-
-  return results.sort((a, b) => b.score - a.score).slice(0, options.topK);
+  return searchWeighted(index, weighted, options, params);
 }

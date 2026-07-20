@@ -9,3 +9,9 @@ tmp/
 CLAUDE.md
 HANDOFF.md
 AGENTS.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

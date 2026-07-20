@@ -24,24 +24,32 @@ export const BridgeTable = {
   },
 
   /**
+   * 遍历指定 token ID 的桥接目标及相似度，零对象分配喵
+   * @param tokenId - 查询 token 的 ID
+   * @param fn - 遍历回调函数 (id, sim) => void
+   */
+  lookupForEach(tokenId: number, fn: (id: TokenId, sim: number) => void): void {
+    if (!_offsets || !_pairs) return;
+    const start = _offsets[tokenId];
+    const end = _offsets[tokenId + 1];
+    if (start === undefined || end === undefined || start === end) return;
+    for (let i = start; i < end; i++) {
+      const packed = _pairs[i];
+      if (packed !== undefined) {
+        fn(packed & MASK_ID, (packed >> SHIFT_SIM) & 0x7F);
+      }
+    }
+  },
+
+  /**
    * @param tokenId - 查询 token 的 ID
    * @returns 目标 token ID 列表及相似度
    */
   lookup(tokenId: number): Array<{ id: TokenId; sim: number }> {
-    if (!_offsets || !_pairs) return [];
-    const start = _offsets[tokenId];
-    const end = _offsets[tokenId + 1];
-    if (start === undefined || end === undefined) return [];
-    if (start === end) return [];
     const result: Array<{ id: TokenId; sim: number }> = [];
-    for (let i = start; i < end; i++) {
-      const packed = _pairs[i];
-      if (packed === undefined) continue;
-      result.push({
-        id: packed & MASK_ID,
-        sim: (packed >> SHIFT_SIM) & 0x7F,
-      });
-    }
+    this.lookupForEach(tokenId, (id, sim) => {
+      result.push({ id, sim });
+    });
     return result;
   },
 

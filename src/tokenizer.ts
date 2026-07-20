@@ -1,15 +1,20 @@
 import type { TokenId } from "./types.js";
 import { VOCAB, MERGES, UNK_ID } from "./vocab.js";
 
-// 相邻字符合并的优先级 Map (left,right -> rank)
-const _mergeRanks = new Map<string, number>();
+// 相邻字符合并的优先级 Map (left -> right -> rank)
+const _mergeRanks = new Map<string, Map<string, number>>();
 
 // 模块加载时一次性初始化：将 merges 数组预构建为 O(1) 查询的 _mergeRanks 优先级 Map
 for (let i = 0; i < MERGES.length; i++) {
   const merge = MERGES[i];
   if (merge) {
     const [left, right] = merge;
-    _mergeRanks.set(`${left},${right}`, i);
+    let inner = _mergeRanks.get(left);
+    if (!inner) {
+      inner = new Map<string, number>();
+      _mergeRanks.set(left, inner);
+    }
+    inner.set(right, i);
   }
 }
 
@@ -160,23 +165,32 @@ class MinHeap {
   }
 }
 
+// 模块级单例 TextEncoder
+const _textEncoder = new TextEncoder();
+
+// 预构建的字节 token 查找表 (0-255)
+const _byteTokens: string[] = Array.from({ length: 256 }, (_, b) =>
+  `<0x${b.toString(16).toUpperCase().padStart(2, "0")}>`
+);
+
 /**
  * 逐字查词表，若不存在则尝试 UTF-8 byte fallback（<0xNN> 格式）
  * @param text - 预切分好的单个子词片（如 " hello" 或 "world"）
  * @returns 子单元字符串数组
  */
 function _expandWithByteFallback(text: string): string[] {
-  const encoder = new TextEncoder();
   const result: string[] = [];
   for (const char of text) {
     if (VOCAB[char] !== undefined) {
       result.push(char);
     } else {
-      const bytes = encoder.encode(char);
+      const bytes = _textEncoder.encode(char);
       const byteTokens: string[] = [];
       let allExist = true;
-      for (const b of bytes) {
-        const token = `<0x${b.toString(16).toUpperCase().padStart(2, "0")}>`;
+      for (let i = 0; i < bytes.length; i++) {
+        const b = bytes[i];
+        if (b === undefined) continue;
+        const token = _byteTokens[b] ?? "";
         if (VOCAB[token] === undefined) {
           allExist = false;
           break;
@@ -184,7 +198,10 @@ function _expandWithByteFallback(text: string): string[] {
         byteTokens.push(token);
       }
       if (allExist) {
-        result.push(...byteTokens);
+        for (let i = 0; i < byteTokens.length; i++) {
+          const t = byteTokens[i];
+          if (t !== undefined) result.push(t);
+        }
       } else {
         result.push(char);
       }
@@ -193,14 +210,26 @@ function _expandWithByteFallback(text: string): string[] {
   return result;
 }
 
+// BPE tokenization 缓存，限制大小防 OOM 喵
+const _mergeCache = new Map<string, string[]>();
+const CACHE_MAX_SIZE = 65536;
+
 /**
  * BPE 合并循环，使用双向指针链表与二叉最小堆实现
  * @param word - 预切分好的单个子词片（如 " hello" 或 "world"）
  * @returns BPE 合并后的子单元字符串数组
  */
 function _mergeWord(word: string): string[] {
+  // 先查缓存喵
+  const cached = _mergeCache.get(word);
+  if (cached !== undefined) return cached;
+
   const chars = _expandWithByteFallback(word);
-  if (chars.length <= 1) return chars;
+  if (chars.length <= 1) {
+    if (_mergeCache.size >= CACHE_MAX_SIZE) _mergeCache.clear();
+    _mergeCache.set(word, chars);
+    return chars;
+  }
 
   // 1初始化双向指针链表数组
   const symbols: SymbolNode[] = [];
@@ -221,8 +250,7 @@ function _mergeWord(word: string): string[] {
     const leftNode = symbols[i];
     const rightNode = symbols[i + 1];
     if (leftNode === undefined || rightNode === undefined) continue;
-    const pairKey = `${leftNode.c},${rightNode.c}`;
-    const rank = _mergeRanks.get(pairKey);
+    const rank = _mergeRanks.get(leftNode.c)?.get(rightNode.c);
     if (rank !== undefined) {
       queue.push({ pos: i, rank });
     }
@@ -241,7 +269,7 @@ function _mergeWord(word: string): string[] {
     if (!nextNode) continue;
 
     // 校验 Pair 依然是最新待合并的
-    if (_mergeRanks.get(`${node.c},${nextNode.c}`) !== top.rank) continue;
+    if (_mergeRanks.get(node.c)?.get(nextNode.c) !== top.rank) continue;
 
     // 执行合并操作
     node.c += nextNode.c;
@@ -261,7 +289,7 @@ function _mergeWord(word: string): string[] {
       const r = symbols[rightIdx];
       // 只要两个邻居都存在且没被合并删除
       if (l && r && l.len > 0 && r.len > 0) {
-        const rank = _mergeRanks.get(`${l.c},${r.c}`);
+        const rank = _mergeRanks.get(l.c)?.get(r.c);
         if (rank !== undefined) queue.push({ pos: leftIdx, rank });
       }
     };
@@ -270,9 +298,23 @@ function _mergeWord(word: string): string[] {
     if (node.prev !== -1) pushPair(node.prev, top.pos);
     if (node.next !== -1) pushPair(top.pos, node.next);
   }
-  // 返回未删除节点
-  return symbols.filter((s) => s.len > 0).map((s) => s.c);
+  // 返回未删除节点，优化掉 filter().map() 双重数组分配喵
+  const result: string[] = [];
+  for (let i = 0; i < symbols.length; i++) {
+    const s = symbols[i];
+    if (s !== undefined && s.len > 0) {
+      result.push(s.c);
+    }
+  }
+
+  // 存入缓存喵
+  if (_mergeCache.size >= CACHE_MAX_SIZE) _mergeCache.clear();
+  _mergeCache.set(word, result);
+  return result;
 }
+
+// 缓存 vocab 大小避免每次 Object.keys 遍历喵
+const _vocabSize = Object.keys(VOCAB).length;
 
 export const Tokenizer = {
   /**
@@ -282,8 +324,8 @@ export const Tokenizer = {
   encode(text: string): TokenId[] {
     if (!text) return [];
 
-    // 1. Normalization: 替换普通空格为 Metaspace 字符 ▁ (\u2581)
-    const normalized = text.replace(/ /g, "\u2581");
+    // 1. Normalization: 替换普通空格为 Metaspace 字符 ▁ (\u2581)，replaceAll 比正则更快更省分配喵
+    const normalized = text.replaceAll(" ", "\u2581");
 
     // 2. 整个字符串作为一个词片执行 BPE 合并（官方 pipeline：normalize 后再 pre-tokenize，
     //    此时已无空格可 split，整个文本作为单个 pre-token 送入 BPE 模型）
@@ -293,7 +335,9 @@ export const Tokenizer = {
     let lastWasUnk = false;
 
     // 3. 将融合后的子字串转换为词表 ID，缺失的使用 unkId 填充，连续 unk 仅保留首个（fuse_unk）
-    for (const part of mergedParts) {
+    for (let i = 0; i < mergedParts.length; i++) {
+      const part = mergedParts[i];
+      if (part === undefined) continue;
       const id = VOCAB[part];
       if (id === undefined) {
         if (!lastWasUnk) {
@@ -311,7 +355,7 @@ export const Tokenizer = {
 
   /** @returns 词典的总 Token 数量 */
   get vocabSize(): number {
-    return Object.keys(VOCAB).length;
+    return _vocabSize;
   },
 
   /** @returns `<unk>` 的 TokenId */
