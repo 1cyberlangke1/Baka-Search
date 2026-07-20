@@ -18,12 +18,11 @@ for (let i = 0; i < MERGES.length; i++) {
   }
 }
 
-// ID -> token 字符串的反向映射，用于 query token 展开
-const _idToToken = new Map<TokenId, string>();
-const _idToTokenExport: ReadonlyMap<TokenId, string> = _idToToken;
-export { _idToTokenExport as idToToken };
+// ID -> token 字符串的反向映射（数组索引比 Map.get 快喵）
+const _idToToken: (string | undefined)[] = [];
+export { _idToToken as idToToken };
 for (const [token, id] of Object.entries(VOCAB)) {
-  _idToToken.set(id, token);
+  _idToToken[id] = token;
 }
 
 /**
@@ -46,7 +45,7 @@ export function expandQueryTokens(ids: TokenId[]): TokenId[] {
       result.push(id);
     }
 
-    const token = _idToToken.get(id);
+    const token = _idToToken[id];
     if (token === undefined) continue;
 
     if (token.startsWith("\u2581")) {
@@ -163,7 +162,14 @@ class MinHeap {
   public get length(): number {
     return this.data.length;
   }
+
+  public clear(): void {
+    this.data.length = 0;
+  }
 }
+
+// 全局复用最小堆实例，避免 _mergeWord 高频 new/GC 喵
+const _heap = new MinHeap();
 
 // 模块级单例 TextEncoder
 const _textEncoder = new TextEncoder();
@@ -175,6 +181,7 @@ const _byteTokens: string[] = Array.from({ length: 256 }, (_, b) =>
 
 /**
  * 逐字查词表，若不存在则尝试 UTF-8 byte fallback（<0xNN> 格式）
+ * 直接推入 result，失败时回滚，消除 byteTokens 中间数组喵
  * @param text - 预切分好的单个子词片（如 " hello" 或 "world"）
  * @returns 子单元字符串数组
  */
@@ -185,7 +192,7 @@ function _expandWithByteFallback(text: string): string[] {
       result.push(char);
     } else {
       const bytes = _textEncoder.encode(char);
-      const byteTokens: string[] = [];
+      const startLen = result.length;
       let allExist = true;
       for (let i = 0; i < bytes.length; i++) {
         const b = bytes[i];
@@ -195,14 +202,10 @@ function _expandWithByteFallback(text: string): string[] {
           allExist = false;
           break;
         }
-        byteTokens.push(token);
+        result.push(token);
       }
-      if (allExist) {
-        for (let i = 0; i < byteTokens.length; i++) {
-          const t = byteTokens[i];
-          if (t !== undefined) result.push(t);
-        }
-      } else {
+      if (!allExist) {
+        result.length = startLen;
         result.push(char);
       }
     }
@@ -244,8 +247,9 @@ function _mergeWord(word: string): string[] {
     });
   }
 
-  // 扫描并把所有初始相邻字符对的合并任务推入最小堆
-  const queue = new MinHeap();
+  // 扫描并把所有初始相邻字符对的合并任务推入最小堆（复用全局单例喵）
+  const queue = _heap;
+  queue.clear();
   for (let i = 0; i < symbols.length - 1; i++) {
     const leftNode = symbols[i];
     const rightNode = symbols[i + 1];

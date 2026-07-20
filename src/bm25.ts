@@ -72,7 +72,8 @@ export function searchWeighted(
   options: { topK: number },
   params: Required<BM25Params>,
 ): SearchResult[] {
-  const scores = new Map<number, number>();
+  // 用数组替代 Map，docId 是自增连续整数，索引访问消除哈希开销喵
+  const scores: number[] = [];
 
   const totalDocs = index.totalDocs;
   const avgDocLength = index.avgDocLength;
@@ -89,25 +90,20 @@ export function searchWeighted(
     const postings = index.getPostings(token);
     if (!postings) continue;
 
-    const docFreq = postings.size; // 消除 getDocFreq 冗余 Map 查询喵
-    const idf = Math.log(1 + (totalDocs - docFreq + 0.5) / (docFreq + 0.5)); // 内联 IDF 预计算喵
+    const docFreq = postings.size;
+    const idf = Math.log(1 + (totalDocs - docFreq + 0.5) / (docFreq + 0.5));
 
     for (const [docId, freq] of postings) {
-      const dl = index.getDocLength(docId); // O(1) 数组长度查询喵
+      const dl = index.getDocLength(docId);
       const tfScore = (freq * (k1 + 1)) / (freq + k1 * (1 - b + (b * dl) / avgDocLength));
-      const score = (idf * tfScore + d * idf) * weight;
-
-      scores.set(docId, (scores.get(docId) ?? 0) + score);
+      scores[docId] = (scores[docId] ?? 0) + (idf * tfScore + d * idf) * weight;
     }
   }
 
-  // 消除 Array.from().map() 产生的双重中间数组分配喵
   const results: SearchResult[] = [];
-  for (const [docId, score] of scores) {
-    results.push({
-      id: docId,
-      score,
-    });
+  for (let docId = 1; docId < scores.length; docId++) {
+    const s = scores[docId];
+    if (s) results.push({ id: docId, score: s });
   }
 
   return results.sort((a, b) => b.score - a.score).slice(0, options.topK);
@@ -126,13 +122,32 @@ export function search(
   options: { topK: number },
   params: Required<BM25Params>,
 ): SearchResult[] {
-  // 转换为加权 token 调用，统一实现并降低维护成本喵
-  const weighted: WeightedToken[] = [];
+  // 纯搜索内联打分路径，避免 WeightedToken[] 对象分配喵
+  const scores: number[] = [];
+  const totalDocs = index.totalDocs;
+  const avgDocLength = index.avgDocLength;
+  const k1 = params.k1;
+  const b = params.b;
+  const d = params.d;
+
   for (let i = 0; i < queryTokens.length; i++) {
     const t = queryTokens[i];
-    if (t !== undefined) {
-      weighted.push({ token: t, weight: 1.0 });
+    if (t === undefined) continue;
+    const postings = index.getPostings(t);
+    if (!postings) continue;
+    const docFreq = postings.size;
+    const idf = Math.log(1 + (totalDocs - docFreq + 0.5) / (docFreq + 0.5));
+    for (const [docId, freq] of postings) {
+      const dl = index.getDocLength(docId);
+      const tfScore = (freq * (k1 + 1)) / (freq + k1 * (1 - b + (b * dl) / avgDocLength));
+      scores[docId] = (scores[docId] ?? 0) + idf * tfScore + d * idf;
     }
   }
-  return searchWeighted(index, weighted, options, params);
+
+  const results: SearchResult[] = [];
+  for (let docId = 1; docId < scores.length; docId++) {
+    const s = scores[docId];
+    if (s) results.push({ id: docId, score: s });
+  }
+  return results.sort((a, b) => b.score - a.score).slice(0, options.topK);
 }

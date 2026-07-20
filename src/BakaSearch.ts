@@ -202,7 +202,7 @@ export class BakaSearch {
     for (let i = 0; i < tokens.length; i++) {
       const t = tokens[i];
       if (t === undefined) continue;
-      const token = idToToken.get(t);
+      const token = idToToken[t];
       if (token === undefined) continue;
       let altId: number | undefined;
       if (token.startsWith("\u2581")) {
@@ -233,7 +233,7 @@ export class BakaSearch {
     for (let i = 0; i < metaspaceExtras.length; i++) {
       const id = metaspaceExtras[i];
       if (id === undefined) continue;
-      const token = idToToken.get(id);
+      const token = idToToken[id];
       if (token === undefined) continue;
       const currentWeight = best.get(id);
       if (currentWeight === undefined) continue;
